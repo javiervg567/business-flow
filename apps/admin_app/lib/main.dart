@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:core/core.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppConfig.load();
+  await SupabaseService.initialize(
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
+  );
   runApp(const AdminApp());
 }
 
@@ -26,17 +33,30 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLoggedIn = SupabaseService.isAuthenticated;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Business Flow — Admin'),
         backgroundColor: const Color(0xFF1D6FEB),
         foregroundColor: Colors.white,
       ),
-      body: const Center(
-        child: Text(
-          'App de administración\n(en construcción)',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('App de administración', style: TextStyle(fontSize: 18)),
+            const SizedBox(height: 12),
+            Text(
+              isLoggedIn
+                  ? '✓ Supabase conectado y usuario logueado'
+                  : '✓ Supabase conectado (sin sesión)',
+              style: TextStyle(
+                fontSize: 14,
+                color: isLoggedIn ? Colors.green : Colors.grey,
+              ),
+            ),
+          ],
         ),
       ),
     );
