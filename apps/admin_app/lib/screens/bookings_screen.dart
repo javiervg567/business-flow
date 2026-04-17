@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'finalize_booking_dialog.dart';
 
 class BookingsScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -58,8 +59,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
   void _applyFilters() {
     setState(() {
       _filtered = _bookings.where((b) {
-        final clientName =
-            (b['client']?['full_name'] as String? ?? '').toLowerCase();
+        final clientName = (b['client']?['full_name'] as String? ?? '')
+            .toLowerCase();
         final matchSearch =
             _search.isEmpty || clientName.contains(_search.toLowerCase());
         final matchStatus =
@@ -88,9 +89,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Reserva ${_statusLabel(newStatus).toLowerCase()}',
-          ),
+          content: Text('Reserva ${_statusLabel(newStatus).toLowerCase()}'),
           backgroundColor: const Color(0xFF16A34A),
         ),
       );
@@ -113,39 +112,53 @@ class _BookingsScreenState extends State<BookingsScreen> {
   ) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1D6FEB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
-            content: Text(message, style: const TextStyle(fontSize: 14)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text(
-                  'Cancelar',
-                  style: TextStyle(color: Color(0xFF64748B)),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1D6FEB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Confirmar'),
-              ),
-            ],
+            child: const Text('Confirmar'),
           ),
+        ],
+      ),
     );
     if (ok == true) onConfirm();
+  }
+
+  Future<void> _openFinalizeDialog(Map<String, dynamic> booking) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          FinalizeBookingDialog(booking: booking, profile: widget.profile),
+    );
+    if (result == true) {
+      _loadBookings();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reserva completada y factura generada'),
+          backgroundColor: Color(0xFF16A34A),
+        ),
+      );
+    }
   }
 
   Future<void> _showNewBookingDialog() async {
@@ -199,215 +212,201 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
     await showDialog(
       context: context,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder: (ctx, setDlg) {
-              final dateStr =
-                  selDate != null
-                      ? '${selDate!.day.toString().padLeft(2, '0')}/'
-                          '${selDate!.month.toString().padLeft(2, '0')}/'
-                          '${selDate!.year}'
-                      : null;
-              final timeStr =
-                  selTime != null
-                      ? '${selTime!.hour.toString().padLeft(2, '0')}:'
-                          '${selTime!.minute.toString().padLeft(2, '0')}'
-                      : null;
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final dateStr = selDate != null
+              ? '${selDate!.day.toString().padLeft(2, '0')}/'
+                    '${selDate!.month.toString().padLeft(2, '0')}/'
+                    '${selDate!.year}'
+              : null;
+          final timeStr = selTime != null
+              ? '${selTime!.hour.toString().padLeft(2, '0')}:'
+                    '${selTime!.minute.toString().padLeft(2, '0')}'
+              : null;
 
-              return AlertDialog(
-                title: const Text(
-                  'Nueva reserva',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                content: SizedBox(
-                  width: 440,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          return AlertDialog(
+            title: const Text(
+              'Nueva reserva',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _label('Cliente *'),
+                    const SizedBox(height: 6),
+                    _dropdownField<Map<String, dynamic>>(
+                      hint: 'Seleccionar cliente',
+                      value: selClient,
+                      items: clients,
+                      label: (c) => c['full_name'] as String,
+                      onChanged: (v) => setDlg(() => selClient = v),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('Servicio *'),
+                    const SizedBox(height: 6),
+                    _dropdownField<Map<String, dynamic>>(
+                      hint: 'Seleccionar servicio',
+                      value: selService,
+                      items: services,
+                      label: (s) =>
+                          '${s['name']}  ·  '
+                          '${s['duration_minutes']} min  ·  '
+                          '${(s['price'] as num).toStringAsFixed(2)}€',
+                      onChanged: (v) => setDlg(() => selService = v),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('Empleado'),
+                    const SizedBox(height: 6),
+                    _nullableDropdownField(
+                      hint: 'Sin asignar',
+                      value: selEmployee,
+                      items: employees,
+                      label: (e) => e['full_name'] as String,
+                      onChanged: (v) => setDlg(() => selEmployee = v),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
                       children: [
-                        _label('Cliente *'),
-                        const SizedBox(height: 6),
-                        _dropdownField<Map<String, dynamic>>(
-                          hint: 'Seleccionar cliente',
-                          value: selClient,
-                          items: clients,
-                          label: (c) => c['full_name'] as String,
-                          onChanged: (v) => setDlg(() => selClient = v),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Servicio *'),
-                        const SizedBox(height: 6),
-                        _dropdownField<Map<String, dynamic>>(
-                          hint: 'Seleccionar servicio',
-                          value: selService,
-                          items: services,
-                          label:
-                              (s) =>
-                                  '${s['name']}  ·  '
-                                  '${s['duration_minutes']} min  ·  '
-                                  '${(s['price'] as num).toStringAsFixed(2)}€',
-                          onChanged: (v) => setDlg(() => selService = v),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Empleado'),
-                        const SizedBox(height: 6),
-                        _nullableDropdownField(
-                          hint: 'Sin asignar',
-                          value: selEmployee,
-                          items: employees,
-                          label: (e) => e['full_name'] as String,
-                          onChanged: (v) => setDlg(() => selEmployee = v),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Fecha *'),
-                                  const SizedBox(height: 6),
-                                  _pickerButton(
-                                    label: dateStr ?? 'Seleccionar',
-                                    icon: Icons.calendar_today,
-                                    onTap: () async {
-                                      final d = await showDatePicker(
-                                        context: ctx,
-                                        initialDate: DateTime.now(),
-                                        firstDate: DateTime.now().subtract(
-                                          const Duration(days: 30),
-                                        ),
-                                        lastDate: DateTime.now().add(
-                                          const Duration(days: 365),
-                                        ),
-                                      );
-                                      if (d != null) {
-                                        setDlg(() => selDate = d);
-                                      }
-                                    },
-                                  ),
-                                ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('Fecha *'),
+                              const SizedBox(height: 6),
+                              _pickerButton(
+                                label: dateStr ?? 'Seleccionar',
+                                icon: Icons.calendar_today,
+                                onTap: () async {
+                                  final d = await showDatePicker(
+                                    context: ctx,
+                                    initialDate: DateTime.now(),
+                                    firstDate: DateTime.now().subtract(
+                                      const Duration(days: 30),
+                                    ),
+                                    lastDate: DateTime.now().add(
+                                      const Duration(days: 365),
+                                    ),
+                                  );
+                                  if (d != null) setDlg(() => selDate = d);
+                                },
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Hora *'),
-                                  const SizedBox(height: 6),
-                                  _pickerButton(
-                                    label: timeStr ?? 'Seleccionar',
-                                    icon: Icons.access_time,
-                                    onTap: () async {
-                                      final t = await showTimePicker(
-                                        context: ctx,
-                                        initialTime: TimeOfDay.now(),
-                                      );
-                                      if (t != null) {
-                                        setDlg(() => selTime = t);
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 14),
-                        _label('Notas (opcional)'),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: notesCtrl,
-                          maxLines: 2,
-                          decoration: _inputDecoration('Observaciones...'),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('Hora *'),
+                              const SizedBox(height: 6),
+                              _pickerButton(
+                                label: timeStr ?? 'Seleccionar',
+                                icon: Icons.access_time,
+                                onTap: () async {
+                                  final t = await showTimePicker(
+                                    context: ctx,
+                                    initialTime: TimeOfDay.now(),
+                                  );
+                                  if (t != null) setDlg(() => selTime = t);
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    _label('Notas (opcional)'),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: notesCtrl,
+                      maxLines: 2,
+                      decoration: _inputDecoration('Observaciones...'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: Color(0xFF64748B)),
+                ),
+              ),
+              ElevatedButton(
+                onPressed:
+                    (selClient == null ||
+                        selService == null ||
+                        selDate == null ||
+                        selTime == null)
+                    ? null
+                    : () async {
+                        final startAt = DateTime(
+                          selDate!.year,
+                          selDate!.month,
+                          selDate!.day,
+                          selTime!.hour,
+                          selTime!.minute,
+                        );
+                        final endAt = startAt.add(
+                          Duration(
+                            minutes:
+                                selService!['duration_minutes'] as int? ?? 60,
+                          ),
+                        );
+                        try {
+                          await SupabaseService.client.from('bookings').insert({
+                            'business_id': widget.profile['business_id'],
+                            'client_id': selClient!['id'],
+                            'employee_id': selEmployee?['id'],
+                            'service_id': selService!['id'],
+                            'start_at': startAt.toUtc().toIso8601String(),
+                            'end_at': endAt.toUtc().toIso8601String(),
+                            'status': 'pending',
+                            'notes': notesCtrl.text.trim().isEmpty
+                                ? null
+                                : notesCtrl.text.trim(),
+                          });
+                          if (!ctx.mounted) return;
+                          Navigator.of(ctx).pop();
+                          _loadBookings();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Reserva creada correctamente'),
+                              backgroundColor: Color(0xFF16A34A),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!ctx.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Error al crear la reserva'),
+                              backgroundColor: Color(0xFFDC2626),
+                            ),
+                          );
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1D6FEB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text(
-                      'Cancelar',
-                      style: TextStyle(color: Color(0xFF64748B)),
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed:
-                        (selClient == null ||
-                                selService == null ||
-                                selDate == null ||
-                                selTime == null)
-                            ? null
-                            : () async {
-                              final startAt = DateTime(
-                                selDate!.year,
-                                selDate!.month,
-                                selDate!.day,
-                                selTime!.hour,
-                                selTime!.minute,
-                              );
-                              final endAt = startAt.add(
-                                Duration(
-                                  minutes:
-                                      selService!['duration_minutes'] as int? ??
-                                      60,
-                                ),
-                              );
-                              try {
-                                await SupabaseService.client
-                                    .from('bookings')
-                                    .insert({
-                                      'business_id':
-                                          widget.profile['business_id'],
-                                      'client_id': selClient!['id'],
-                                      'employee_id': selEmployee?['id'],
-                                      'service_id': selService!['id'],
-                                      'start_at':
-                                          startAt.toUtc().toIso8601String(),
-                                      'end_at': endAt.toUtc().toIso8601String(),
-                                      'status': 'pending',
-                                      'notes':
-                                          notesCtrl.text.trim().isEmpty
-                                              ? null
-                                              : notesCtrl.text.trim(),
-                                    });
-                                if (!ctx.mounted) return;
-                                Navigator.of(ctx).pop();
-                                _loadBookings();
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Reserva creada correctamente'),
-                                    backgroundColor: Color(0xFF16A34A),
-                                  ),
-                                );
-                              } catch (e) {
-                                if (!ctx.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Error al crear la reserva'),
-                                    backgroundColor: Color(0xFFDC2626),
-                                  ),
-                                );
-                              }
-                            },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1D6FEB),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('Crear reserva'),
-                  ),
-                ],
-              );
-            },
-          ),
+                child: const Text('Crear reserva'),
+              ),
+            ],
+          );
+        },
+      ),
     );
     notesCtrl.dispose();
   }
@@ -440,18 +439,14 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
           isExpanded: true,
           style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-          items:
-              items
-                  .map(
-                    (item) => DropdownMenuItem<T>(
-                      value: item,
-                      child: Text(
-                        label(item),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
+          items: items
+              .map(
+                (item) => DropdownMenuItem<T>(
+                  value: item,
+                  child: Text(label(item), overflow: TextOverflow.ellipsis),
+                ),
+              )
+              .toList(),
           onChanged: onChanged,
         ),
       ),
@@ -547,15 +542,15 @@ class _BookingsScreenState extends State<BookingsScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    final pendingCount =
-        _bookings.where((b) => b['status'] == 'pending').length;
+    final pendingCount = _bookings
+        .where((b) => b['status'] == 'pending')
+        .length;
 
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Alerta de pendientes
           if (pendingCount > 0)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -583,8 +578,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 ],
               ),
             ),
-
-          // Barra de filtros
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -623,8 +616,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ),
                 ),
               ),
-
-              // Filtros de estado
               ..._statusFilters.map((filter) {
                 final selected = _statusFilter == filter;
                 return InkWell(
@@ -660,7 +651,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ),
                 );
               }),
-
               ElevatedButton.icon(
                 onPressed: _showNewBookingDialog,
                 icon: const Icon(Icons.add, size: 18),
@@ -680,8 +670,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Tabla / Lista
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -702,13 +690,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   : LayoutBuilder(
                       builder: (context, constraints) =>
                           constraints.maxWidth > 600
-                              ? _buildTable()
-                              : _buildList(),
+                          ? _buildTable()
+                          : _buildList(),
                     ),
             ),
           ),
-
-          // Footer
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: Text(
@@ -753,23 +739,20 @@ class _BookingsScreenState extends State<BookingsScreen> {
   }
 
   TableRow _buildTableRow(Map<String, dynamic> b) {
-    final clientName =
-        b['client']?['full_name'] as String? ?? 'Desconocido';
+    final clientName = b['client']?['full_name'] as String? ?? 'Desconocido';
     final employeeName = b['employee']?['full_name'] as String? ?? '—';
     final serviceName = b['service']?['name'] as String? ?? '—';
     final status = b['status'] as String? ?? '';
     final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
-    final dateStr =
-        startAt != null
-            ? '${startAt.day.toString().padLeft(2, '0')}/'
-                '${startAt.month.toString().padLeft(2, '0')}/'
-                '${startAt.year}'
-            : '—';
-    final timeStr =
-        startAt != null
-            ? '${startAt.hour.toString().padLeft(2, '0')}:'
-                '${startAt.minute.toString().padLeft(2, '0')}'
-            : '—';
+    final dateStr = startAt != null
+        ? '${startAt.day.toString().padLeft(2, '0')}/'
+              '${startAt.month.toString().padLeft(2, '0')}/'
+              '${startAt.year}'
+        : '—';
+    final timeStr = startAt != null
+        ? '${startAt.hour.toString().padLeft(2, '0')}:'
+              '${startAt.minute.toString().padLeft(2, '0')}'
+        : '—';
 
     return TableRow(
       decoration: const BoxDecoration(
@@ -829,7 +812,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
   Widget _buildList() {
     return ListView.separated(
       itemCount: _filtered.length,
-      separatorBuilder: (_, _) =>
+      separatorBuilder: (_, __) =>
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
       itemBuilder: (ctx, i) {
         final b = _filtered[i];
@@ -838,14 +821,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
         final serviceName = b['service']?['name'] as String? ?? '—';
         final status = b['status'] as String? ?? '';
         final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
-        final dateTimeStr =
-            startAt != null
-                ? '${startAt.day.toString().padLeft(2, '0')}/'
-                    '${startAt.month.toString().padLeft(2, '0')}/'
-                    '${startAt.year}  '
-                    '${startAt.hour.toString().padLeft(2, '0')}:'
-                    '${startAt.minute.toString().padLeft(2, '0')}'
-                : '—';
+        final dateTimeStr = startAt != null
+            ? '${startAt.day.toString().padLeft(2, '0')}/'
+                  '${startAt.month.toString().padLeft(2, '0')}/'
+                  '${startAt.year}  '
+                  '${startAt.hour.toString().padLeft(2, '0')}:'
+                  '${startAt.minute.toString().padLeft(2, '0')}'
+            : '—';
 
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
@@ -861,10 +843,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
             children: [
               Text(
                 serviceName,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF475569),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
               ),
               const SizedBox(height: 2),
               Text(
@@ -906,26 +885,25 @@ class _BookingsScreenState extends State<BookingsScreen> {
       return PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert, size: 18, color: Color(0xFF64748B)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        itemBuilder:
-            (_) => [
-              if (status == 'pending')
-                const PopupMenuItem(
-                  value: 'confirm',
-                  child: Text('Confirmar', style: TextStyle(fontSize: 13)),
-                ),
-              if (status == 'confirmed')
-                const PopupMenuItem(
-                  value: 'complete',
-                  child: Text('Completar', style: TextStyle(fontSize: 13)),
-                ),
-              const PopupMenuItem(
-                value: 'cancel',
-                child: Text(
-                  'Cancelar',
-                  style: TextStyle(fontSize: 13, color: Color(0xFFDC2626)),
-                ),
-              ),
-            ],
+        itemBuilder: (_) => [
+          if (status == 'pending')
+            const PopupMenuItem(
+              value: 'confirm',
+              child: Text('Confirmar', style: TextStyle(fontSize: 13)),
+            ),
+          if (status == 'confirmed')
+            const PopupMenuItem(
+              value: 'complete',
+              child: Text('Finalizar y cobrar', style: TextStyle(fontSize: 13)),
+            ),
+          const PopupMenuItem(
+            value: 'cancel',
+            child: Text(
+              'Cancelar',
+              style: TextStyle(fontSize: 13, color: Color(0xFFDC2626)),
+            ),
+          ),
+        ],
         onSelected: (action) {
           switch (action) {
             case 'confirm':
@@ -935,11 +913,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 () => _updateStatus(id, 'confirmed'),
               );
             case 'complete':
-              _confirmAction(
-                'Completar reserva',
-                '¿Marcar como completada la reserva de $clientName?',
-                () => _updateStatus(id, 'completed'),
-              );
+              _openFinalizeDialog(b);
             case 'cancel':
               _confirmAction(
                 'Cancelar reserva',
@@ -970,17 +944,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
         if (status == 'confirmed')
           TextButton(
-            onPressed: () => _confirmAction(
-              'Completar reserva',
-              '¿Marcar como completada la reserva de $clientName?',
-              () => _updateStatus(id, 'completed'),
-            ),
+            onPressed: () => _openFinalizeDialog(b),
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF1D6FEB),
+              foregroundColor: const Color(0xFF16A34A),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               minimumSize: Size.zero,
             ),
-            child: const Text('Completar', style: TextStyle(fontSize: 12)),
+            child: const Text(
+              'Finalizar y cobrar',
+              style: TextStyle(fontSize: 12),
+            ),
           ),
         TextButton(
           onPressed: () => _confirmAction(
@@ -1009,7 +982,11 @@ class _BookingStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final styles = <String, (Color, Color, String)>{
-      'pending': (const Color(0xFFFFFBEB), const Color(0xFFD97706), 'Pendiente'),
+      'pending': (
+        const Color(0xFFFFFBEB),
+        const Color(0xFFD97706),
+        'Pendiente',
+      ),
       'confirmed': (
         const Color(0xFFF0FDF4),
         const Color(0xFF16A34A),
