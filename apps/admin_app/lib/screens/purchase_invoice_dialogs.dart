@@ -6,7 +6,13 @@ import 'sale_invoice_dialogs.dart';
 
 class CreatePurchaseInvoiceDialog extends StatefulWidget {
   final InvoiceService invoiceService;
-  const CreatePurchaseInvoiceDialog({super.key, required this.invoiceService});
+  final Map<String, dynamic> profile;
+
+  const CreatePurchaseInvoiceDialog({
+    super.key,
+    required this.invoiceService,
+    required this.profile,
+  });
 
   @override
   State<CreatePurchaseInvoiceDialog> createState() =>
@@ -17,18 +23,61 @@ class _CreatePurchaseInvoiceDialogState
     extends State<CreatePurchaseInvoiceDialog> {
   final _formKey = GlobalKey<FormState>();
   final _numberCtrl = TextEditingController();
-  final _supplierCtrl = TextEditingController();
   final _taxCtrl = TextEditingController(text: '21');
 
   bool _saving = false;
-  final List<InvoiceLineItem> _lines = [InvoiceLineItem()];
+  bool _loadingSuppliers = true;
+  bool _loadingProducts = true;
+  List<Map<String, dynamic>> _suppliers = [];
+  List<Map<String, dynamic>> _products = [];
+  Map<String, dynamic>? _selectedSupplier;
+
+  final List<InvoiceLineItem> _lines = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuppliers();
+    _loadProducts();
+  }
 
   @override
   void dispose() {
     _numberCtrl.dispose();
-    _supplierCtrl.dispose();
     _taxCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSuppliers() async {
+    try {
+      final data = await SupabaseService.client
+          .from('suppliers')
+          .select('id, name, contact_name, phone')
+          .eq('business_id', widget.profile['business_id'])
+          .order('name');
+      if (!mounted) return;
+      setState(() => _suppliers = List<Map<String, dynamic>>.from(data));
+    } catch (e) {
+      // Si falla, seguimos sin proveedores
+    } finally {
+      if (mounted) setState(() => _loadingSuppliers = false);
+    }
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      final data = await SupabaseService.client
+          .from('products')
+          .select('id, name, price, stock')
+          .eq('business_id', widget.profile['business_id'])
+          .order('name');
+      if (!mounted) return;
+      setState(() => _products = List<Map<String, dynamic>>.from(data));
+    } catch (e) {
+      // Si falla, seguimos sin productos
+    } finally {
+      if (mounted) setState(() => _loadingProducts = false);
+    }
   }
 
   double get _subtotal =>
@@ -37,7 +86,7 @@ class _CreatePurchaseInvoiceDialogState
   double get _taxAmount => _subtotal * (_taxRate / 100);
   double get _total => _subtotal + _taxAmount;
 
-  void _addLine() => setState(() => _lines.add(InvoiceLineItem()));
+  void _addManualLine() => setState(() => _lines.add(InvoiceLineItem()));
   void _removeLine(int i) {
     if (_lines.length > 1) setState(() => _lines.removeAt(i));
   }
@@ -49,8 +98,180 @@ class _CreatePurchaseInvoiceDialogState
     ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
+  void _showSupplierPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Seleccionar proveedor',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: SizedBox(
+          width: 360,
+          height: 400,
+          child: _loadingSuppliers
+              ? const Center(child: CircularProgressIndicator())
+              : _suppliers.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay proveedores registrados',
+                    style: TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: _suppliers.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  itemBuilder: (_, i) {
+                    final supplier = _suppliers[i];
+                    final contactName = supplier['contact_name'] as String?;
+                    final phone = supplier['phone'] as String?;
+                    return ListTile(
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.store_outlined,
+                          color: Color(0xFF16A34A),
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(
+                        supplier['name'] as String? ?? '',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: contactName != null || phone != null
+                          ? Text(
+                              [
+                                if (contactName != null) contactName,
+                                if (phone != null) phone,
+                              ].join(' · '),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() => _selectedSupplier = supplier);
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showProductPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Seleccionar producto',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: SizedBox(
+          width: 360,
+          height: 400,
+          child: _loadingProducts
+              ? const Center(child: CircularProgressIndicator())
+              : _products.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay productos en stock',
+                    style: TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: _products.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  itemBuilder: (_, i) {
+                    final product = _products[i];
+                    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+                    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+                    return ListTile(
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2_outlined,
+                          color: Color(0xFF1D6FEB),
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(
+                        product['name'] as String? ?? '',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        'Stock actual: $stock uds',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                      trailing: Text(
+                        '${price.toStringAsFixed(2)} €',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1D6FEB),
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _lines.add(
+                            InvoiceLineItem()
+                              ..description = product['name'] as String? ?? ''
+                              ..quantity = 1.0
+                              ..unitPrice = price
+                              ..productId = product['id'] as String?,
+                          );
+                        });
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedSupplier == null) {
+      _showError('Selecciona un proveedor');
+      return;
+    }
     if (_lines.any((l) => l.description.isEmpty)) {
       _showError('Rellena la descripción de todas las líneas');
       return;
@@ -59,7 +280,8 @@ class _CreatePurchaseInvoiceDialogState
     setState(() => _saving = true);
     try {
       await widget.invoiceService.createPurchaseInvoice(
-        supplierName: _supplierCtrl.text.trim(),
+        businessId: widget.profile['business_id'] as String,
+        supplierName: _selectedSupplier!['name'] as String,
         number: _numberCtrl.text.trim(),
         lines: _lines
             .map(
@@ -67,7 +289,7 @@ class _CreatePurchaseInvoiceDialogState
                 'description': l.description,
                 'quantity': l.quantity,
                 'unit_price': l.unitPrice,
-                'product_id': null,
+                'product_id': l.productId,
               },
             )
             .toList(),
@@ -98,10 +320,10 @@ class _CreatePurchaseInvoiceDialogState
               children: [
                 _buildTitle(),
                 const SizedBox(height: 20),
+                _buildSupplierSelector(),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _buildSupplierField()),
-                    const SizedBox(width: 12),
                     Expanded(child: _buildNumberField()),
                     const SizedBox(width: 12),
                     SizedBox(width: 90, child: _buildTaxField()),
@@ -121,10 +343,19 @@ class _CreatePurchaseInvoiceDialogState
                     onChanged: () => setState(() {}),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: _addLine,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Añadir línea'),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _showProductPicker,
+                      icon: const Icon(Icons.inventory_2_outlined, size: 16),
+                      label: const Text('Añadir del stock'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _addManualLine,
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      label: const Text('Añadir manual'),
+                    ),
+                  ],
                 ),
                 const Divider(height: 24),
                 _buildTotals(),
@@ -151,11 +382,46 @@ class _CreatePurchaseInvoiceDialogState
     );
   }
 
-  Widget _buildSupplierField() {
-    return TextFormField(
-      controller: _supplierCtrl,
-      decoration: invoiceInputDeco('Proveedor', Icons.store_outlined),
-      validator: (v) => v == null || v.isEmpty ? 'Obligatorio' : null,
+  Widget _buildSupplierSelector() {
+    return GestureDetector(
+      onTap: _showSupplierPicker,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: _selectedSupplier == null
+                ? const Color(0xFFE2E8F2)
+                : const Color(0xFF16A34A),
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.store_outlined,
+              size: 18,
+              color: _selectedSupplier == null
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFF16A34A),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _selectedSupplier?['name'] as String? ??
+                    'Seleccionar proveedor',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _selectedSupplier == null
+                      ? const Color(0xFF64748B)
+                      : Colors.black,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -202,7 +468,7 @@ class _CreatePurchaseInvoiceDialogState
         ElevatedButton(
           onPressed: _saving ? null : _save,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF16A34A),
+            backgroundColor: const Color(0xFF1D6FEB),
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -253,15 +519,21 @@ class _PurchaseInvoiceDetailSheetState
   }
 
   Future<void> _load() async {
-    final data = await SupabaseService.client
-        .from('purchase_invoice_lines')
-        .select()
-        .eq('purchase_invoice_id', widget.invoice['id'])
-        .order('created_at');
-    setState(() {
-      _lines = List<Map<String, dynamic>>.from(data);
-      _loading = false;
-    });
+    try {
+      final data = await SupabaseService.client
+          .from('purchase_invoice_lines')
+          .select()
+          .eq('purchase_invoice_id', widget.invoice['id'])
+          .order('created_at');
+      if (!mounted) return;
+      setState(() {
+        _lines = List<Map<String, dynamic>>.from(data);
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override
@@ -311,7 +583,16 @@ class _PurchaseInvoiceDetailSheetState
             ),
             const SizedBox(height: 8),
             if (_loading)
-              const Center(child: CircularProgressIndicator())
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_lines.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    'Sin líneas',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                  ),
+                ),
+              )
             else
               Expanded(
                 child: ListView(

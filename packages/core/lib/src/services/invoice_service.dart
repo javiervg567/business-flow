@@ -27,9 +27,8 @@ class InvoiceService {
     required String clientId,
     String? bookingId,
     required String number,
-    required List<Map<String, dynamic>>
-    lines, // {description, quantity, unit_price}
-    required double taxRate, // ej: 0.21
+    required List<Map<String, dynamic>> lines,
+    required double taxRate,
   }) async {
     final subtotal = lines.fold<double>(
       0,
@@ -80,10 +79,10 @@ class InvoiceService {
   }
 
   Future<void> createPurchaseInvoice({
+    required String businessId,
     required String supplierName,
     required String number,
-    required List<Map<String, dynamic>>
-    lines, // {description, quantity, unit_price, product_id?}
+    required List<Map<String, dynamic>> lines,
     required double taxRate,
   }) async {
     final subtotal = lines.fold<double>(
@@ -96,6 +95,7 @@ class InvoiceService {
     final invoice = await _client
         .from('purchase_invoices')
         .insert({
+          'business_id': businessId,
           'supplier_name': supplierName,
           'number': number,
           'subtotal': subtotal,
@@ -122,6 +122,27 @@ class InvoiceService {
     }).toList();
 
     await _client.from('purchase_invoice_lines').insert(lineRows);
+
+    // Sumar stock de los productos comprados
+    final productLines = lines.where((l) => l['product_id'] != null).toList();
+    for (final line in productLines) {
+      final productId = line['product_id'] as String;
+      final qty = (line['quantity'] as double).round();
+
+      final product = await _client
+          .from('products')
+          .select('stock')
+          .eq('id', productId)
+          .single();
+
+      final currentStock = (product['stock'] as num).toInt();
+      final newStock = currentStock + qty;
+
+      await _client
+          .from('products')
+          .update({'stock': newStock})
+          .eq('id', productId);
+    }
   }
 
   // ── CAMBIAR ESTADO ───────────────────────────────────────
@@ -136,6 +157,8 @@ class InvoiceService {
         .update({'status': status})
         .eq('id', id);
   }
+
+  // ── FINALIZAR RESERVA ────────────────────────────────────
 
   Future<void> finalizeBooking({
     required String bookingId,
@@ -165,7 +188,7 @@ class InvoiceService {
           'subtotal': subtotal,
           'tax_amount': taxAmount,
           'total': total,
-          'status': 'pending',
+          'status': 'paid',
         })
         .select()
         .single();
@@ -185,6 +208,27 @@ class InvoiceService {
     }).toList();
 
     await _client.from('invoice_lines').insert(lineRows);
+
+    // Descontar stock de los productos vendidos
+    final productLines = lines.where((l) => l['product_id'] != null).toList();
+    for (final line in productLines) {
+      final productId = line['product_id'] as String;
+      final qty = (line['quantity'] as double).round();
+
+      final product = await _client
+          .from('products')
+          .select('stock')
+          .eq('id', productId)
+          .single();
+
+      final currentStock = (product['stock'] as num).toInt();
+      final newStock = (currentStock - qty).clamp(0, 999999);
+
+      await _client
+          .from('products')
+          .update({'stock': newStock})
+          .eq('id', productId);
+    }
 
     await _client
         .from('bookings')

@@ -203,7 +203,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
       return const Center(child: CircularProgressIndicator());
     }
     return DropdownButtonFormField<String>(
-      value: _selectedClientId,
+      initialValue: _selectedClientId,
       decoration: invoiceInputDeco('Cliente', Icons.person_outline),
       items: _clients
           .map(
@@ -393,6 +393,7 @@ class InvoiceLineItem {
   String description = '';
   double quantity = 1;
   double unitPrice = 0;
+  String? productId;
 }
 
 class InvoiceLineRow extends StatelessWidget {
@@ -402,6 +403,7 @@ class InvoiceLineRow extends StatelessWidget {
   final VoidCallback onChanged;
 
   const InvoiceLineRow({
+    super.key,
     required this.item,
     required this.index,
     required this.onRemove,
@@ -467,7 +469,7 @@ class InvoiceLineRow extends StatelessWidget {
 
 class InvoiceDetailLineRow extends StatelessWidget {
   final Map<String, dynamic> line;
-  const InvoiceDetailLineRow({required this.line});
+  const InvoiceDetailLineRow({super.key, required this.line});
 
   @override
   Widget build(BuildContext context) {
@@ -513,6 +515,7 @@ class InvoiceTotalRow extends StatelessWidget {
   final bool bold;
 
   const InvoiceTotalRow({
+    super.key,
     required this.label,
     required this.value,
     this.bold = false,

@@ -37,7 +37,7 @@ class _MainLayoutState extends State<MainLayout> {
       DashboardScreen(profile: widget.profile),
       BookingsScreen(profile: widget.profile),
       const InventoryScreen(),
-      const InvoicesScreen(),
+      InvoicesScreen(profile: widget.profile),
       ProfileScreen(profile: widget.profile),
     ];
   }

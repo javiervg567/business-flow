@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:core/core.dart';
 import 'sale_invoice_dialogs.dart';
 import 'purchase_invoice_dialogs.dart';
+import 'suppliers_screen.dart';
 
 class InvoicesScreen extends StatefulWidget {
-  const InvoicesScreen({super.key});
+  final Map<String, dynamic> profile;
+  const InvoicesScreen({super.key, required this.profile});
 
   @override
   State<InvoicesScreen> createState() => _InvoicesScreenState();
@@ -14,6 +16,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _invoiceService = InvoiceService(SupabaseService.client);
+  final _suppliersKey = GlobalKey<SuppliersTabState>();
 
   List<Map<String, dynamic>> _saleInvoices = [];
   List<Map<String, dynamic>> _purchaseInvoices = [];
@@ -23,7 +26,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadSales();
     _loadPurchases();
   }
@@ -148,7 +151,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Factura $number eliminada'),
-          backgroundColor: const Color(0xFF16A34A),
+          backgroundColor: const Color(0xFF1D6FEB),
         ),
       );
     } catch (e) {
@@ -259,7 +262,11 @@ class _InvoicesScreenState extends State<InvoicesScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: [_buildSalesList(), _buildPurchasesList()],
+              children: [
+                _buildSalesList(),
+                _buildPurchasesList(),
+                SuppliersTab(key: _suppliersKey, profile: widget.profile),
+              ],
             ),
           ),
         ],
@@ -298,11 +305,29 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     return ListenableBuilder(
       listenable: _tabController,
       builder: (context, _) {
-        final isVentas = _tabController.index == 0;
+        final index = _tabController.index;
+        if (index == 2) {
+          return ElevatedButton.icon(
+            onPressed: () => _suppliersKey.currentState?.openForm(),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Nuevo proveedor'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1D6FEB),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
         return ElevatedButton.icon(
-          onPressed: () => isVentas ? _openCreateSale() : _openCreatePurchase(),
+          onPressed: () {
+            if (index == 0) _openCreateSale();
+            if (index == 1) _openCreatePurchase();
+          },
           icon: const Icon(Icons.add, size: 18),
-          label: Text(isVentas ? 'Nueva venta' : 'Nueva compra'),
+          label: Text(index == 0 ? 'Nueva venta' : 'Nueva compra'),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF1D6FEB),
             foregroundColor: Colors.white,
@@ -338,13 +363,12 @@ class _InvoicesScreenState extends State<InvoicesScreen>
           tabs: const [
             Tab(text: 'Ventas'),
             Tab(text: 'Compras'),
+            Tab(text: 'Proveedores'),
           ],
         ),
       ),
     );
   }
-
-  // ── VENTAS ────────────────────────────────────────────────
 
   Widget _buildSalesList() {
     if (_loadingSales) {
@@ -373,8 +397,6 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       ),
     );
   }
-
-  // ── COMPRAS ───────────────────────────────────────────────
 
   Widget _buildPurchasesList() {
     if (_loadingPurchases) {
@@ -423,8 +445,6 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     );
   }
 
-  // ── MODALES ───────────────────────────────────────────────
-
   void _openCreateSale() async {
     final result = await showDialog<bool>(
       context: context,
@@ -436,8 +456,10 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   void _openCreatePurchase() async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (_) =>
-          CreatePurchaseInvoiceDialog(invoiceService: _invoiceService),
+      builder: (_) => CreatePurchaseInvoiceDialog(
+        invoiceService: _invoiceService,
+        profile: widget.profile,
+      ),
     );
     if (result == true) _loadPurchases();
   }
@@ -668,6 +690,16 @@ class _PurchaseInvoiceCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   _StatusBadge(status: status),
                   const SizedBox(height: 6),
+                  if (status == 'pending')
+                    GestureDetector(
+                      onTap: () => onStatusChange('paid'),
+                      child: const Icon(
+                        Icons.check_circle_outline,
+                        color: Color(0xFF16A34A),
+                        size: 18,
+                      ),
+                    ),
+                  if (status == 'pending') const SizedBox(height: 4),
                   GestureDetector(
                     onTap: onDelete,
                     child: const Icon(
