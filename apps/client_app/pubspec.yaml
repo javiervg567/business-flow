@@ -38,6 +38,9 @@ dependencies:
     path: ../../packages/core
   ui_kit:
     path: ../../packages/ui_kit
+  flutter_localizations:
+    sdk: flutter
+  intl: 0.20.2
 
 dev_dependencies:
   flutter_test:
