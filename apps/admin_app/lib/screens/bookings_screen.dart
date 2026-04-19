@@ -21,6 +21,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
   static const int _pageSize = 10;
   int _currentPage = 0;
 
+  bool get _isEmployee => widget.profile['role'] == 'employee';
+
   static const _statusFilters = [
     'Todos',
     'Pendiente',
@@ -35,10 +37,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
     _loadBookings();
   }
 
+  DateTime _nextWorkday(DateTime date) {
+    var d = date;
+    while (d.weekday == DateTime.sunday) {
+      d = d.add(const Duration(days: 1));
+    }
+    return d;
+  }
+
   Future<void> _loadBookings() async {
     setState(() => _loading = true);
     try {
-      final res = await SupabaseService.client
+      var query = SupabaseService.client
           .from('bookings')
           .select(
             '*, '
@@ -46,8 +56,14 @@ class _BookingsScreenState extends State<BookingsScreen> {
             'employee:profiles!bookings_employee_id_fkey(full_name), '
             'service:services(name, duration_minutes, price)',
           )
-          .eq('business_id', widget.profile['business_id'])
-          .order('start_at', ascending: false);
+          .eq('business_id', widget.profile['business_id']);
+
+      // Empleado solo ve sus propias reservas
+      if (_isEmployee) {
+        query = query.eq('employee_id', widget.profile['id']);
+      }
+
+      final res = await query.order('start_at', ascending: false);
 
       final bookings = (res as List).cast<Map<String, dynamic>>();
       setState(() {
@@ -94,7 +110,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 startAt.isBefore(to.add(const Duration(seconds: 1)));
           }
         }
-
         return matchSearch && matchStatus && matchDate;
       }).toList();
     });
@@ -107,15 +122,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
       lastDate: DateTime(2030),
       initialDateRange: _dateRange,
       locale: const Locale('es'),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: Color(0xFF1D6FEB),
-            onPrimary: Colors.white,
-          ),
-        ),
-        child: child!,
-      ),
     );
     if (range != null) {
       setState(() => _dateRange = range);
@@ -269,24 +275,25 @@ class _BookingsScreenState extends State<BookingsScreen> {
     if (!mounted) return;
 
     Map<String, dynamic>? selClient;
-    Map<String, dynamic>? selEmployee;
     Map<String, dynamic>? selService;
     DateTime? selDate;
     TimeOfDay? selTime;
     final notesCtrl = TextEditingController();
+
+    // Si es empleado, preseleccionar su propio perfil
+    Map<String, dynamic>? selEmployee = _isEmployee
+        ? employees.where((e) => e['id'] == widget.profile['id']).firstOrNull
+        : null;
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
           final dateStr = selDate != null
-              ? '${selDate!.day.toString().padLeft(2, '0')}/'
-                    '${selDate!.month.toString().padLeft(2, '0')}/'
-                    '${selDate!.year}'
+              ? '${selDate!.day.toString().padLeft(2, '0')}/${selDate!.month.toString().padLeft(2, '0')}/${selDate!.year}'
               : null;
           final timeStr = selTime != null
-              ? '${selTime!.hour.toString().padLeft(2, '0')}:'
-                    '${selTime!.minute.toString().padLeft(2, '0')}'
+              ? '${selTime!.hour.toString().padLeft(2, '0')}:${selTime!.minute.toString().padLeft(2, '0')}'
               : null;
 
           return AlertDialog(
@@ -324,13 +331,46 @@ class _BookingsScreenState extends State<BookingsScreen> {
                     const SizedBox(height: 14),
                     _label('Empleado'),
                     const SizedBox(height: 6),
-                    _nullableDropdownField(
-                      hint: 'Sin asignar',
-                      value: selEmployee,
-                      items: employees,
-                      label: (e) => e['full_name'] as String,
-                      onChanged: (v) => setDlg(() => selEmployee = v),
-                    ),
+                    // Empleado: campo bloqueado con su nombre
+                    if (_isEmployee)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE2E8F2)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.person_outline,
+                              size: 16,
+                              color: Color(0xFF64748B),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              selEmployee?['full_name'] ??
+                                  widget.profile['full_name'] ??
+                                  '',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      _nullableDropdownField(
+                        hint: 'Sin asignar',
+                        value: selEmployee,
+                        items: employees,
+                        label: (e) => e['full_name'] as String,
+                        onChanged: (v) => setDlg(() => selEmployee = v),
+                      ),
                     const SizedBox(height: 14),
                     Row(
                       children: [
@@ -346,13 +386,17 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                 onTap: () async {
                                   final d = await showDatePicker(
                                     context: ctx,
-                                    initialDate: DateTime.now(),
-                                    firstDate: DateTime.now().subtract(
-                                      const Duration(days: 30),
+                                    initialDate: _nextWorkday(DateTime.now()),
+                                    firstDate: _nextWorkday(
+                                      DateTime.now().subtract(
+                                        const Duration(days: 30),
+                                      ),
                                     ),
                                     lastDate: DateTime.now().add(
                                       const Duration(days: 365),
                                     ),
+                                    selectableDayPredicate: (day) =>
+                                        day.weekday != DateTime.sunday,
                                   );
                                   if (d != null) setDlg(() => selDate = d);
                                 },
@@ -679,7 +723,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ),
                 ),
               ),
-              // Filtro de fechas
               _DateRangeButton(
                 dateRange: _dateRange,
                 onTap: _pickDateRange,

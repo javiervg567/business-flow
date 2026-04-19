@@ -148,21 +148,13 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       lastDate: DateTime(2030),
       initialDateRange: _saleDateRange,
       locale: const Locale('es'),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: Color(0xFF1D6FEB),
-            onPrimary: Colors.white,
-          ),
-        ),
-        child: child!,
-      ),
     );
-    if (range != null)
+    if (range != null) {
       setState(() {
         _saleDateRange = range;
         _salePage = 0;
       });
+    }
   }
 
   Future<void> _pickPurchaseDateRange() async {
@@ -172,21 +164,13 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       lastDate: DateTime(2030),
       initialDateRange: _purchaseDateRange,
       locale: const Locale('es'),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: Color(0xFF1D6FEB),
-            onPrimary: Colors.white,
-          ),
-        ),
-        child: child!,
-      ),
     );
-    if (range != null)
+    if (range != null) {
       setState(() {
         _purchaseDateRange = range;
         _purchasePage = 0;
       });
+    }
   }
 
   Future<void> _deleteSaleInvoice(Map<String, dynamic> invoice) async {

@@ -13,15 +13,8 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  bool _isMobile() {
-    try {
-      return Platform.isAndroid || Platform.isIOS;
-    } catch (_) {
-      return false;
-    }
-  }
-
   bool _loading = true;
+  bool _isEmployee = false;
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
   String _search = '';
@@ -40,6 +33,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     'Todas': 'Todas',
   };
 
+  bool _isMobile() {
+    try {
+      return Platform.isAndroid || Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +52,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
     try {
       final profile = await AuthService.getCurrentProfile();
       final businessId = profile?['business_id'];
+      final role = profile?['role'] as String? ?? '';
+
+      setState(() => _isEmployee = role == 'employee');
 
       final res = await SupabaseService.client
           .from('products')
@@ -59,7 +63,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
           .order('name');
 
       final products = (res as List).cast<Map<String, dynamic>>();
-
       final cats =
           products
               .map((p) => p['category'] as String? ?? 'Sin categoría')
@@ -92,16 +95,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
             _search.isEmpty ||
             name.contains(_search.toLowerCase()) ||
             sku.contains(_search.toLowerCase());
-
         final matchCat = _categoryFilter == 'Todas' || cat == _categoryFilter;
-
         final matchStatus = switch (_statusFilter) {
           'Crítico' => stock < minStock,
           'Bajo' => stock >= minStock && stock < minStock * 1.5,
           'OK' => stock >= minStock * 1.5,
           _ => true,
         };
-
         return matchSearch && matchCat && matchStatus;
       }).toList();
     });
@@ -114,6 +114,120 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   int get _totalPages => (_filtered.length / _pageSize).ceil();
+
+  Future<void> _showNotifyAdminDialog(Map<String, dynamic> product) async {
+    final msgCtrl = TextEditingController(
+      text: 'He usado ${product['name']} y el stock ha bajado.',
+    );
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(
+              Icons.notifications_outlined,
+              color: Color(0xFF1D6FEB),
+              size: 20,
+            ),
+            SizedBox(width: 8),
+            Text(
+              'Notificar al administrador',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Mensaje',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: msgCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Describe el uso del producto...',
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.all(12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F2)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F2)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF1D6FEB),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final msg = msgCtrl.text.trim();
+              if (msg.isEmpty) return;
+              try {
+                final profile = await AuthService.getCurrentProfile();
+                await SupabaseService.client
+                    .from('stock_notifications')
+                    .insert({
+                      'business_id': profile?['business_id'],
+                      'employee_id': profile?['id'],
+                      'message': msg,
+                    });
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Notificación enviada al administrador'),
+                    backgroundColor: Color(0xFF16A34A),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Error al enviar la notificación'),
+                    backgroundColor: Color(0xFFDC2626),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1D6FEB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
+    msgCtrl.dispose();
+  }
 
   Future<void> _showAddStockDialog(Map<String, dynamic> product) async {
     final skuController = TextEditingController();
@@ -343,7 +457,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       ),
     );
-
     skuController.dispose();
     qtyController.dispose();
     reasonController.dispose();
@@ -363,7 +476,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
       MaterialPageRoute(builder: (_) => const _ScannerScreen()),
     );
     if (sku == null || !mounted) return;
-
     try {
       final profile = await AuthService.getCurrentProfile();
       final res = await SupabaseService.client
@@ -512,45 +624,30 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 );
               }),
-              OutlinedButton.icon(
-                onPressed: _showNewProductDialog,
-                icon: const Icon(Icons.add_box_outlined, size: 18),
-                label: const Text('Nuevo producto'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF1D6FEB),
-                  side: const BorderSide(color: Color(0xFF1D6FEB)),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showAddStockDialog({}),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Añadir stock'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1D6FEB),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              // Botones solo para admin
+              if (!_isEmployee) ...[
+                OutlinedButton.icon(
+                  onPressed: _showNewProductDialog,
+                  icon: const Icon(Icons.add_box_outlined, size: 18),
+                  label: const Text('Nuevo producto'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1D6FEB),
+                    side: const BorderSide(color: Color(0xFF1D6FEB)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
-              ),
-              if (!kIsWeb && _isMobile())
                 ElevatedButton.icon(
-                  onPressed: _openScanner,
-                  icon: const Icon(Icons.qr_code_scanner, size: 18),
-                  label: const Text('Escanear'),
+                  onPressed: () => _showAddStockDialog({}),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Añadir stock'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C3AED),
+                    backgroundColor: const Color(0xFF1D6FEB),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -561,6 +658,24 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ),
                 ),
+                if (!kIsWeb && _isMobile())
+                  ElevatedButton.icon(
+                    onPressed: _openScanner,
+                    icon: const Icon(Icons.qr_code_scanner, size: 18),
+                    label: const Text('Escanear'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C3AED),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -598,7 +713,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildPagination() {
     if (_totalPages <= 1) return const SizedBox.shrink();
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -615,7 +729,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               icon: const Icon(Icons.first_page),
               color: const Color(0xFF1D6FEB),
               disabledColor: const Color(0xFFCBD5E1),
-              tooltip: 'Primera página',
             ),
             IconButton(
               onPressed: _currentPage > 0
@@ -624,7 +737,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               icon: const Icon(Icons.chevron_left),
               color: const Color(0xFF1D6FEB),
               disabledColor: const Color(0xFFCBD5E1),
-              tooltip: 'Anterior',
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -648,7 +760,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               icon: const Icon(Icons.chevron_right),
               color: const Color(0xFF1D6FEB),
               disabledColor: const Color(0xFFCBD5E1),
-              tooltip: 'Siguiente',
             ),
             IconButton(
               onPressed: _currentPage < _totalPages - 1
@@ -657,7 +768,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
               icon: const Icon(Icons.last_page),
               color: const Color(0xFF1D6FEB),
               disabledColor: const Color(0xFFCBD5E1),
-              tooltip: 'Última página',
             ),
           ],
         ),
@@ -795,20 +905,35 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: TextButton(
-            onPressed: () async {
-              final result = await showDialog<bool>(
-                context: context,
-                builder: (_) => ProductFormDialog(product: product),
-              );
-              if (result == true) _loadProducts();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF1D6FEB),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            ),
-            child: const Text('Editar', style: TextStyle(fontSize: 12)),
-          ),
+          child: _isEmployee
+              ? TextButton(
+                  onPressed: () => _showNotifyAdminDialog(product),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFD97706),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                  ),
+                  child: const Text('Avisar', style: TextStyle(fontSize: 12)),
+                )
+              : TextButton(
+                  onPressed: () async {
+                    final result = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => ProductFormDialog(product: product),
+                    );
+                    if (result == true) _loadProducts();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF1D6FEB),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                  ),
+                  child: const Text('Editar', style: TextStyle(fontSize: 12)),
+                ),
         ),
       ],
     );
@@ -862,20 +987,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     : const Color(0xFF94A3B8),
               ),
               const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  color: Color(0xFF1D6FEB),
-                  size: 18,
-                ),
-                onPressed: () async {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => ProductFormDialog(product: p),
-                  );
-                  if (result == true) _loadProducts();
-                },
-              ),
+              _isEmployee
+                  ? IconButton(
+                      icon: const Icon(
+                        Icons.notifications_outlined,
+                        color: Color(0xFFD97706),
+                        size: 18,
+                      ),
+                      onPressed: () => _showNotifyAdminDialog(p),
+                    )
+                  : IconButton(
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF1D6FEB),
+                        size: 18,
+                      ),
+                      onPressed: () async {
+                        final result = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => ProductFormDialog(product: p),
+                        );
+                        if (result == true) _loadProducts();
+                      },
+                    ),
             ],
           ),
         );
@@ -916,14 +1050,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
 class _ScannerScreen extends StatefulWidget {
   const _ScannerScreen();
-
   @override
   State<_ScannerScreen> createState() => _ScannerScreenState();
 }
 
 class _ScannerScreenState extends State<_ScannerScreen> {
   bool _scanned = false;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1070,12 +1202,10 @@ class _CategoryBadge extends StatelessWidget {
       'tratamientos': (const Color(0xFFF0FDF4), const Color(0xFF16A34A)),
       'unas': (const Color(0xFFFFF0F3), const Color(0xFFE11D48)),
     };
-
     final colorPair =
         colors[category.toLowerCase()] ??
         (const Color(0xFFF1F5F9), const Color(0xFF64748B));
     final displayName = displayNames[category.toLowerCase()] ?? category;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -1101,10 +1231,8 @@ class _StockBadge extends StatelessWidget {
       'Bajo': (const Color(0xFFFFFBEB), const Color(0xFFD97706)),
       'OK': (const Color(0xFFF0FDF4), const Color(0xFF16A34A)),
     };
-
     final style =
         styles[status] ?? (const Color(0xFFF1F5F9), const Color(0xFF64748B));
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

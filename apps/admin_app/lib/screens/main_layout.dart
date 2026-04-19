@@ -21,25 +21,41 @@ class _MainLayoutState extends State<MainLayout> {
   late final List<_NavItem> _navItems;
   late final List<Widget> _screens;
 
+  bool get _isAdmin => widget.profile['role'] == 'admin';
+
   @override
   void initState() {
     super.initState();
 
-    _navItems = const [
-      _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
-      _NavItem(icon: Icons.calendar_month, label: 'Reservas'),
-      _NavItem(icon: Icons.inventory_2, label: 'Inventario'),
-      _NavItem(icon: Icons.receipt_long, label: 'Facturas'),
-      _NavItem(icon: Icons.person_outline, label: 'Perfil'),
-    ];
-
-    _screens = [
-      DashboardScreen(profile: widget.profile),
-      BookingsScreen(profile: widget.profile),
-      const InventoryScreen(),
-      InvoicesScreen(profile: widget.profile),
-      ProfileScreen(profile: widget.profile),
-    ];
+    if (_isAdmin) {
+      _navItems = const [
+        _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
+        _NavItem(icon: Icons.calendar_month, label: 'Reservas'),
+        _NavItem(icon: Icons.inventory_2, label: 'Inventario'),
+        _NavItem(icon: Icons.receipt_long, label: 'Facturas'),
+        _NavItem(icon: Icons.person_outline, label: 'Perfil'),
+      ];
+      _screens = [
+        DashboardScreen(profile: widget.profile),
+        BookingsScreen(profile: widget.profile),
+        const InventoryScreen(),
+        InvoicesScreen(profile: widget.profile),
+        ProfileScreen(profile: widget.profile),
+      ];
+    } else {
+      _navItems = const [
+        _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
+        _NavItem(icon: Icons.calendar_month, label: 'Reservas'),
+        _NavItem(icon: Icons.inventory_2, label: 'Inventario'),
+        _NavItem(icon: Icons.person_outline, label: 'Perfil'),
+      ];
+      _screens = [
+        DashboardScreen(profile: widget.profile),
+        BookingsScreen(profile: widget.profile),
+        const InventoryScreen(),
+        ProfileScreen(profile: widget.profile),
+      ];
+    }
   }
 
   void _onItemTapped(int index) {
@@ -58,11 +74,7 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Escritorio: sidebar + contenido
-        if (constraints.maxWidth > 800) {
-          return _buildDesktopLayout();
-        }
-        // Móvil: bottom nav + contenido
+        if (constraints.maxWidth > 800) return _buildDesktopLayout();
         return _buildMobileLayout();
       },
     );
@@ -73,7 +85,6 @@ class _MainLayoutState extends State<MainLayout> {
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar
           Container(
             width: 220,
             decoration: const BoxDecoration(
@@ -129,23 +140,53 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                 ),
 
-                // Sección "Principal"
+                // Badge empleado
+                if (!_isAdmin)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.badge_outlined,
+                          size: 14,
+                          color: Color(0xFF16A34A),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Modo empleado',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF16A34A),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const _SidebarSection(title: 'Principal'),
-                // Items de navegación
+
                 ..._navItems
                     .asMap()
                     .entries
-                    .where((entry) => entry.key < _navItems.length - 1)
-                    .map((entry) {
-                      final i = entry.key;
-                      final item = entry.value;
-                      return _SidebarItem(
-                        icon: item.icon,
-                        label: item.label,
-                        selected: _currentIndex == i,
-                        onTap: () => _onItemTapped(i),
-                      );
-                    }),
+                    .where((e) => e.key < _navItems.length - 1)
+                    .map(
+                      (e) => _SidebarItem(
+                        icon: e.value.icon,
+                        label: e.value.label,
+                        selected: _currentIndex == e.key,
+                        onTap: () => _onItemTapped(e.key),
+                      ),
+                    ),
 
                 const Spacer(),
 
@@ -188,9 +229,7 @@ class _MainLayoutState extends State<MainLayout> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  widget.profile['role'] == 'admin'
-                                      ? 'Administrador'
-                                      : 'Empleado',
+                                  _isAdmin ? 'Administrador' : 'Empleado',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: Color(0xFF64748B),
@@ -217,7 +256,6 @@ class _MainLayoutState extends State<MainLayout> {
           Expanded(
             child: Column(
               children: [
-                // Top bar
                 Container(
                   height: 52,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -239,7 +277,6 @@ class _MainLayoutState extends State<MainLayout> {
                     ],
                   ),
                 ),
-                // Pantalla activa
                 Expanded(
                   child: Container(
                     color: const Color(0xFFF4F6FA),
