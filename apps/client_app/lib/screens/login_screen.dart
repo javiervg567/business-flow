@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
 import 'home_screen.dart';
+import 'business_selection_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -172,7 +173,9 @@ class _LoginFormState extends State<_LoginForm> {
       }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
+        MaterialPageRoute(
+          builder: (_) => BusinessSelectionScreen(profile: profile),
+        ),
       );
     } catch (e) {
       setState(() {

@@ -3,6 +3,7 @@ import 'package:core/core.dart';
 import 'login_screen.dart';
 import 'bookings_screen.dart';
 import 'profile_screen.dart';
+import 'business_selection_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -26,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _screens = [
       ClientHomeTab(profile: widget.profile),
       ClientBookingsScreen(profile: widget.profile),
+      _BusinessesTab(profile: widget.profile),
       ClientProfileScreen(profile: widget.profile),
     ];
   }
@@ -49,6 +51,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.calendar_month_outlined),
             selectedIcon: Icon(Icons.calendar_month, color: Color(0xFF16A34A)),
             label: 'Mis citas',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.store_outlined),
+            selectedIcon: Icon(Icons.store, color: Color(0xFF16A34A)),
+            label: 'Negocios',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -99,7 +106,11 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
             .neq('status', 'cancelled')
             .order('start_at')
             .limit(1),
-        client.from('businesses').select('id, name, phone, address').limit(1),
+        client
+            .from('businesses')
+            .select('id, name, phone, address')
+            .eq('id', widget.profile['business_id'])
+            .limit(1),
       ]);
 
       if (!mounted) return;
@@ -227,6 +238,30 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                         ],
                       ),
                     ),
+                    // Botón cambiar negocio
+                    GestureDetector(
+                      onTap: () => context
+                          .findAncestorStateOfType<_HomeScreenState>()
+                          ?.navigateTo(2),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Cambiar',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -323,13 +358,13 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _quickAction(
-                    icon: Icons.history,
-                    label: 'Mis citas',
+                    icon: Icons.store_outlined,
+                    label: 'Negocios',
                     color: const Color(0xFF0D9488),
                     bg: const Color(0xFFF0FDFA),
                     onTap: () => context
                         .findAncestorStateOfType<_HomeScreenState>()
-                        ?.navigateTo(1),
+                        ?.navigateTo(2),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -341,7 +376,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                     bg: const Color(0xFFDCFCE7),
                     onTap: () => context
                         .findAncestorStateOfType<_HomeScreenState>()
-                        ?.navigateTo(2),
+                        ?.navigateTo(3),
                   ),
                 ),
               ],
@@ -598,5 +633,71 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       'diciembre',
     ];
     return months[m - 1];
+  }
+}
+
+// ==================== NEGOCIOS TAB ====================
+
+class _BusinessesTab extends StatelessWidget {
+  final Map<String, dynamic> profile;
+  const _BusinessesTab({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.store_outlined,
+                size: 32,
+                color: Color(0xFF16A34A),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Mis negocios',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Cambia entre tus negocios favoritos',
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => BusinessSelectionScreen(profile: profile),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.swap_horiz, size: 18),
+              label: const Text('Ver y cambiar negocio'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
