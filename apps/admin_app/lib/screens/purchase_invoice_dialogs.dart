@@ -39,6 +39,7 @@ class _CreatePurchaseInvoiceDialogState
     super.initState();
     _loadSuppliers();
     _loadProducts();
+    _loadNextNumber();
   }
 
   @override
@@ -46,6 +47,18 @@ class _CreatePurchaseInvoiceDialogState
     _numberCtrl.dispose();
     _taxCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadNextNumber() async {
+    try {
+      final number = await widget.invoiceService.generatePurchaseInvoiceNumber(
+        widget.profile['business_id'] as String,
+      );
+      if (!mounted) return;
+      _numberCtrl.text = number;
+    } catch (e) {
+      // Si falla dejamos el campo vacío
+    }
   }
 
   Future<void> _loadSuppliers() async {
@@ -68,7 +81,7 @@ class _CreatePurchaseInvoiceDialogState
     try {
       final data = await SupabaseService.client
           .from('products')
-          .select('id, name, price, stock')
+          .select('id, name, price, purchase_price, stock, min_stock')
           .eq('business_id', widget.profile['business_id'])
           .order('name');
       if (!mounted) return;
@@ -178,90 +191,187 @@ class _CreatePurchaseInvoiceDialogState
   }
 
   void _showProductPicker() {
+    String stockFilter = 'Todos';
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Seleccionar producto',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        content: SizedBox(
-          width: 360,
-          height: 400,
-          child: _loadingProducts
-              ? const Center(child: CircularProgressIndicator())
-              : _products.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No hay productos en stock',
-                    style: TextStyle(color: Color(0xFF94A3B8)),
-                  ),
-                )
-              : ListView.separated(
-                  itemCount: _products.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  itemBuilder: (_, i) {
-                    final product = _products[i];
-                    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
-                    final stock = (product['stock'] as num?)?.toInt() ?? 0;
-                    return ListTile(
-                      leading: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.inventory_2_outlined,
-                          color: Color(0xFF1D6FEB),
-                          size: 18,
-                        ),
-                      ),
-                      title: Text(
-                        product['name'] as String? ?? '',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        'Stock actual: $stock uds',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                      trailing: Text(
-                        '${price.toStringAsFixed(2)} €',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1D6FEB),
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          _lines.add(
-                            InvoiceLineItem()
-                              ..description = product['name'] as String? ?? ''
-                              ..quantity = 1.0
-                              ..unitPrice = price
-                              ..productId = product['id'] as String?,
-                          );
-                        });
-                      },
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Color(0xFF64748B)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final filtered = _products.where((p) {
+            final stock = (p['stock'] as num?)?.toInt() ?? 0;
+            final minStock = (p['min_stock'] as num?)?.toInt() ?? 0;
+            return switch (stockFilter) {
+              'Crítico' => stock < minStock,
+              'Bajo' => stock >= minStock && stock < minStock * 1.5,
+              _ => true,
+            };
+          }).toList();
+
+          return AlertDialog(
+            title: const Text(
+              'Seleccionar producto',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-          ),
-        ],
+            content: SizedBox(
+              width: 360,
+              height: 460,
+              child: Column(
+                children: [
+                  Row(
+                    children: ['Todos', 'Crítico', 'Bajo'].map((f) {
+                      final selected = stockFilter == f;
+                      final color = switch (f) {
+                        'Crítico' => const Color(0xFFDC2626),
+                        'Bajo' => const Color(0xFFD97706),
+                        _ => const Color(0xFF1D6FEB),
+                      };
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => setDlg(() => stockFilter = f),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selected ? color : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: selected
+                                    ? color
+                                    : const Color(0xFFE2E8F2),
+                              ),
+                            ),
+                            child: Text(
+                              f,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: selected
+                                    ? Colors.white
+                                    : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1, color: Color(0xFFE2E8F2)),
+                  Expanded(
+                    child: _loadingProducts
+                        ? const Center(child: CircularProgressIndicator())
+                        : filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No hay productos',
+                              style: TextStyle(color: Color(0xFF94A3B8)),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const Divider(
+                              height: 1,
+                              color: Color(0xFFF1F5F9),
+                            ),
+                            itemBuilder: (_, i) {
+                              final product = filtered[i];
+                              final salePrice =
+                                  (product['price'] as num?)?.toDouble() ?? 0.0;
+                              final purchasePrice =
+                                  (product['purchase_price'] as num?)
+                                      ?.toDouble() ??
+                                  salePrice;
+                              final stock =
+                                  (product['stock'] as num?)?.toInt() ?? 0;
+                              final minStock =
+                                  (product['min_stock'] as num?)?.toInt() ?? 0;
+                              final statusColor = stock < minStock
+                                  ? const Color(0xFFDC2626)
+                                  : stock < minStock * 1.5
+                                  ? const Color(0xFFD97706)
+                                  : const Color(0xFF16A34A);
+
+                              return ListTile(
+                                leading: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEFF6FF),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.inventory_2_outlined,
+                                    color: Color(0xFF1D6FEB),
+                                    size: 18,
+                                  ),
+                                ),
+                                title: Text(
+                                  product['name'] as String? ?? '',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                subtitle: Text(
+                                  'Stock: $stock uds · mín. $minStock',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: statusColor,
+                                  ),
+                                ),
+                                trailing: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Compra: ${purchasePrice.toStringAsFixed(2)} €',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF16A34A),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Venta: ${salePrice.toStringAsFixed(2)} €',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  setState(() {
+                                    _lines.add(
+                                      InvoiceLineItem()
+                                        ..description =
+                                            product['name'] as String? ?? ''
+                                        ..quantity = 1.0
+                                        ..unitPrice = purchasePrice
+                                        ..productId = product['id'] as String?,
+                                    );
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: Color(0xFF64748B)),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -270,6 +380,10 @@ class _CreatePurchaseInvoiceDialogState
     if (!_formKey.currentState!.validate()) return;
     if (_selectedSupplier == null) {
       _showError('Selecciona un proveedor');
+      return;
+    }
+    if (_lines.isEmpty) {
+      _showError('Añade al menos una línea');
       return;
     }
     if (_lines.any((l) => l.description.isEmpty)) {

@@ -16,6 +16,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
   List<Map<String, dynamic>> _filtered = [];
   String _search = '';
   String _statusFilter = 'Todos';
+  DateTimeRange? _dateRange;
+
+  static const int _pageSize = 10;
+  int _currentPage = 0;
 
   static const _statusFilters = [
     'Todos',
@@ -58,6 +62,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
   void _applyFilters() {
     setState(() {
+      _currentPage = 0;
       _filtered = _bookings.where((b) {
         final clientName = (b['client']?['full_name'] as String? ?? '')
             .toLowerCase();
@@ -66,10 +71,70 @@ class _BookingsScreenState extends State<BookingsScreen> {
         final matchStatus =
             _statusFilter == 'Todos' ||
             _statusLabel(b['status'] as String? ?? '') == _statusFilter;
-        return matchSearch && matchStatus;
+
+        bool matchDate = true;
+        if (_dateRange != null) {
+          final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+          if (startAt != null) {
+            final from = DateTime(
+              _dateRange!.start.year,
+              _dateRange!.start.month,
+              _dateRange!.start.day,
+            );
+            final to = DateTime(
+              _dateRange!.end.year,
+              _dateRange!.end.month,
+              _dateRange!.end.day,
+              23,
+              59,
+              59,
+            );
+            matchDate =
+                startAt.isAfter(from.subtract(const Duration(seconds: 1))) &&
+                startAt.isBefore(to.add(const Duration(seconds: 1)));
+          }
+        }
+
+        return matchSearch && matchStatus && matchDate;
       }).toList();
     });
   }
+
+  Future<void> _pickDateRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: _dateRange,
+      locale: const Locale('es'),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF1D6FEB),
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (range != null) {
+      setState(() => _dateRange = range);
+      _applyFilters();
+    }
+  }
+
+  void _clearDateRange() {
+    setState(() => _dateRange = null);
+    _applyFilters();
+  }
+
+  List<Map<String, dynamic>> get _paginated {
+    final start = _currentPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _filtered.length);
+    return _filtered.sublist(start, end);
+  }
+
+  int get _totalPages => (_filtered.length / _pageSize).ceil();
 
   String _statusLabel(String status) => switch (status) {
     'pending' => 'Pendiente',
@@ -253,9 +318,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                       value: selService,
                       items: services,
                       label: (s) =>
-                          '${s['name']}  ·  '
-                          '${s['duration_minutes']} min  ·  '
-                          '${(s['price'] as num).toStringAsFixed(2)}€',
+                          '${s['name']}  ·  ${s['duration_minutes']} min  ·  ${(s['price'] as num).toStringAsFixed(2)}€',
                       onChanged: (v) => setDlg(() => selService = v),
                     ),
                     const SizedBox(height: 14),
@@ -616,6 +679,12 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   ),
                 ),
               ),
+              // Filtro de fechas
+              _DateRangeButton(
+                dateRange: _dateRange,
+                onTap: _pickDateRange,
+                onClear: _clearDateRange,
+              ),
               ..._statusFilters.map((filter) {
                 final selected = _statusFilter == filter;
                 return InkWell(
@@ -695,15 +764,74 @@ class _BookingsScreenState extends State<BookingsScreen> {
                     ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              'Mostrando ${_filtered.length} de ${_bookings.length} reservas',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-          ),
+          const SizedBox(height: 12),
+          _buildPagination(),
         ],
       ),
+    );
+  }
+
+  Widget _buildPagination() {
+    if (_totalPages <= 1) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Mostrando ${_currentPage * _pageSize + 1}–${((_currentPage + 1) * _pageSize).clamp(0, _filtered.length)} de ${_filtered.length} reservas',
+          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        ),
+        Row(
+          children: [
+            IconButton(
+              onPressed: _currentPage > 0
+                  ? () => setState(() => _currentPage = 0)
+                  : null,
+              icon: const Icon(Icons.first_page),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+            ),
+            IconButton(
+              onPressed: _currentPage > 0
+                  ? () => setState(() => _currentPage--)
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1D6FEB),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_currentPage + 1} / $_totalPages',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: _currentPage < _totalPages - 1
+                  ? () => setState(() => _currentPage++)
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+            ),
+            IconButton(
+              onPressed: _currentPage < _totalPages - 1
+                  ? () => setState(() => _currentPage = _totalPages - 1)
+                  : null,
+              icon: const Icon(Icons.last_page),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -732,7 +860,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               _TableHeader(''),
             ],
           ),
-          ..._filtered.map(_buildTableRow),
+          ..._paginated.map(_buildTableRow),
         ],
       ),
     );
@@ -745,13 +873,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final status = b['status'] as String? ?? '';
     final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
     final dateStr = startAt != null
-        ? '${startAt.day.toString().padLeft(2, '0')}/'
-              '${startAt.month.toString().padLeft(2, '0')}/'
-              '${startAt.year}'
+        ? '${startAt.day.toString().padLeft(2, '0')}/${startAt.month.toString().padLeft(2, '0')}/${startAt.year}'
         : '—';
     final timeStr = startAt != null
-        ? '${startAt.hour.toString().padLeft(2, '0')}:'
-              '${startAt.minute.toString().padLeft(2, '0')}'
+        ? '${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
         : '—';
 
     return TableRow(
@@ -811,22 +936,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
   Widget _buildList() {
     return ListView.separated(
-      itemCount: _filtered.length,
-      separatorBuilder: (_, _) =>
+      itemCount: _paginated.length,
+      separatorBuilder: (_, __) =>
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
       itemBuilder: (ctx, i) {
-        final b = _filtered[i];
+        final b = _paginated[i];
         final clientName =
             b['client']?['full_name'] as String? ?? 'Desconocido';
         final serviceName = b['service']?['name'] as String? ?? '—';
         final status = b['status'] as String? ?? '';
         final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
         final dateTimeStr = startAt != null
-            ? '${startAt.day.toString().padLeft(2, '0')}/'
-                  '${startAt.month.toString().padLeft(2, '0')}/'
-                  '${startAt.year}  '
-                  '${startAt.hour.toString().padLeft(2, '0')}:'
-                  '${startAt.minute.toString().padLeft(2, '0')}'
+            ? '${startAt.day.toString().padLeft(2, '0')}/${startAt.month.toString().padLeft(2, '0')}/${startAt.year}  ${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
             : '—';
 
         return ListTile(
@@ -975,6 +1096,75 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
 // ==================== WIDGETS AUXILIARES ====================
 
+class _DateRangeButton extends StatelessWidget {
+  final DateTimeRange? dateRange;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  const _DateRangeButton({
+    required this.dateRange,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRange = dateRange != null;
+    final label = hasRange
+        ? '${dateRange!.start.day}/${dateRange!.start.month}/${dateRange!.start.year} – ${dateRange!.end.day}/${dateRange!.end.month}/${dateRange!.end.year}'
+        : 'Filtrar por fechas';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: hasRange ? const Color(0xFFEEF5FF) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: hasRange ? const Color(0xFF1D6FEB) : const Color(0xFFE2E8F2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.date_range,
+              size: 16,
+              color: hasRange
+                  ? const Color(0xFF1D6FEB)
+                  : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: hasRange
+                    ? const Color(0xFF1D6FEB)
+                    : const Color(0xFF64748B),
+              ),
+            ),
+            if (hasRange) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(
+                  Icons.close,
+                  size: 14,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BookingStatusBadge extends StatelessWidget {
   final String status;
   const _BookingStatusBadge({required this.status});
@@ -1008,11 +1198,9 @@ class _BookingStatusBadge extends StatelessWidget {
         'Lista espera',
       ),
     };
-
     final style =
         styles[status] ??
         (const Color(0xFFF1F5F9), const Color(0xFF64748B), status);
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

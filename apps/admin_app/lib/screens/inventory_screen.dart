@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'product_form_dialog.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -9,6 +13,14 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
+  bool _isMobile() {
+    try {
+      return Platform.isAndroid || Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   bool _loading = true;
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
@@ -16,6 +28,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _categoryFilter = 'Todas';
   String _statusFilter = 'Todos';
   List<String> _categories = ['Todas'];
+
+  static const int _pageSize = 10;
+  int _currentPage = 0;
 
   static const _displayNames = {
     'tintes': 'Tintes',
@@ -65,6 +80,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   void _applyFilters() {
     setState(() {
+      _currentPage = 0;
       _filtered = _products.where((p) {
         final name = (p['name'] as String? ?? '').toLowerCase();
         final sku = (p['sku'] as String? ?? '').toLowerCase();
@@ -90,6 +106,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
       }).toList();
     });
   }
+
+  List<Map<String, dynamic>> get _paginated {
+    final start = _currentPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _filtered.length);
+    return _filtered.sublist(start, end);
+  }
+
+  int get _totalPages => (_filtered.length / _pageSize).ceil();
 
   Future<void> _showAddStockDialog(Map<String, dynamic> product) async {
     final skuController = TextEditingController();
@@ -166,7 +190,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ],
                 ),
-
                 if (searchDone) ...[
                   const SizedBox(height: 12),
                   if (foundProduct == null)
@@ -230,7 +253,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ),
                     ),
                 ],
-
                 if (foundProduct != null) ...[
                   const SizedBox(height: 16),
                   const Text(
@@ -270,16 +292,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 onPressed: () async {
                   final qty = int.tryParse(qtyController.text.trim());
                   if (qty == null || qty <= 0) return;
-
                   try {
                     final profile = await AuthService.getCurrentProfile();
                     final newStock = (foundProduct!['stock'] as int) + qty;
-
                     await SupabaseService.client
                         .from('products')
                         .update({'stock': newStock})
                         .eq('id', foundProduct!['id']);
-
                     await SupabaseService.client
                         .from('stock_movements')
                         .insert({
@@ -291,11 +310,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               : reasonController.text.trim(),
                           'created_by': profile?['id'],
                         });
-
                     if (!ctx.mounted) return;
                     Navigator.of(ctx).pop();
                     _loadProducts();
-
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -333,199 +350,44 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _showNewProductDialog() async {
-    final nameController = TextEditingController();
-    final skuController = TextEditingController();
-    final categoryController = TextEditingController();
-    final priceController = TextEditingController();
-    final stockController = TextEditingController();
-    final minStockController = TextEditingController();
-
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Nuevo producto',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        content: SizedBox(
-          width: 400,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _dialogField(
-                  'Nombre del producto *',
-                  nameController,
-                  'Ej: Tinte rubio ceniza',
-                ),
-                const SizedBox(height: 12),
-                _dialogField('SKU', skuController, 'Ej: TIN-0042'),
-                const SizedBox(height: 12),
-                _dialogField(
-                  'Categoría',
-                  categoryController,
-                  'Ej: tintes, champus, unas...',
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Precio (€)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: priceController,
-                            keyboardType: TextInputType.number,
-                            decoration: _inputDecoration('0.00'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Stock inicial',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: stockController,
-                            keyboardType: TextInputType.number,
-                            decoration: _inputDecoration('0'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Stock mínimo',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          TextField(
-                            controller: minStockController,
-                            keyboardType: TextInputType.number,
-                            decoration: _inputDecoration('0'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Color(0xFF64748B)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              if (name.isEmpty) return;
-
-              try {
-                final profile = await AuthService.getCurrentProfile();
-                await SupabaseService.client.from('products').insert({
-                  'business_id': profile?['business_id'],
-                  'name': name,
-                  'sku': skuController.text.trim().toUpperCase(),
-                  'category': categoryController.text.trim().toLowerCase(),
-                  'price': double.tryParse(priceController.text) ?? 0.0,
-                  'stock': int.tryParse(stockController.text) ?? 0,
-                  'min_stock': int.tryParse(minStockController.text) ?? 0,
-                });
-
-                if (!ctx.mounted) return;
-                Navigator.of(ctx).pop();
-                _loadProducts();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Producto "$name" creado correctamente'),
-                    backgroundColor: const Color(0xFF16A34A),
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Error al crear el producto'),
-                    backgroundColor: Color(0xFFDC2626),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1D6FEB),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Crear producto'),
-          ),
-        ],
-      ),
+      builder: (_) => const ProductFormDialog(),
     );
-
-    nameController.dispose();
-    skuController.dispose();
-    categoryController.dispose();
-    priceController.dispose();
-    stockController.dispose();
-    minStockController.dispose();
+    if (result == true) _loadProducts();
   }
 
-  Widget _dialogField(
-    String label,
-    TextEditingController controller,
-    String hint,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-        ),
-        const SizedBox(height: 6),
-        TextField(controller: controller, decoration: _inputDecoration(hint)),
-      ],
+  Future<void> _openScanner() async {
+    final sku = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _ScannerScreen()),
     );
+    if (sku == null || !mounted) return;
+
+    try {
+      final profile = await AuthService.getCurrentProfile();
+      final res = await SupabaseService.client
+          .from('products')
+          .select()
+          .eq('business_id', profile?['business_id'])
+          .eq('sku', sku.toUpperCase())
+          .single();
+      if (!mounted) return;
+      _showAddStockDialog(res);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Producto con SKU "$sku" no encontrado'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
 
     final criticalCount = _products
         .where((p) => (p['stock'] as int) < (p['min_stock'] as int))
@@ -536,7 +398,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Alerta crítica
           if (criticalCount > 0)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -564,14 +425,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 ],
               ),
             ),
-
-          // Barra de filtros
           Wrap(
             spacing: 10,
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              // Buscador
               SizedBox(
                 width: 260,
                 height: 38,
@@ -605,8 +463,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 ),
               ),
-
-              // Filtro categoría
               _FilterDropdown(
                 value: _categoryFilter,
                 items: _categories,
@@ -616,8 +472,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   _applyFilters();
                 },
               ),
-
-              // Filtros de estado
               ...[
                 ('Todos', null),
                 ('Crítico', const Color(0xFFDC2626)),
@@ -658,8 +512,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 );
               }),
-
-              // Botones
               OutlinedButton.icon(
                 onPressed: _showNewProductDialog,
                 icon: const Icon(Icons.add_box_outlined, size: 18),
@@ -692,11 +544,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 ),
               ),
+              if (!kIsWeb && _isMobile())
+                ElevatedButton.icon(
+                  onPressed: _openScanner,
+                  icon: const Icon(Icons.qr_code_scanner, size: 18),
+                  label: const Text('Escanear'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 16),
-
-          // Tabla / Lista
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -715,26 +582,86 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ),
                     )
                   : LayoutBuilder(
-                      builder: (context, constraints) {
-                        if (constraints.maxWidth > 600) {
-                          return _buildTable();
-                        }
-                        return _buildList();
-                      },
+                      builder: (context, constraints) =>
+                          constraints.maxWidth > 600
+                          ? _buildTable()
+                          : _buildList(),
                     ),
             ),
           ),
-
-          // Footer
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              'Mostrando ${_filtered.length} de ${_products.length} productos',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-          ),
+          const SizedBox(height: 12),
+          _buildPagination(),
         ],
       ),
+    );
+  }
+
+  Widget _buildPagination() {
+    if (_totalPages <= 1) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Mostrando ${_currentPage * _pageSize + 1}–${((_currentPage + 1) * _pageSize).clamp(0, _filtered.length)} de ${_filtered.length} productos',
+          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        ),
+        Row(
+          children: [
+            IconButton(
+              onPressed: _currentPage > 0
+                  ? () => setState(() => _currentPage = 0)
+                  : null,
+              icon: const Icon(Icons.first_page),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+              tooltip: 'Primera página',
+            ),
+            IconButton(
+              onPressed: _currentPage > 0
+                  ? () => setState(() => _currentPage--)
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+              tooltip: 'Anterior',
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1D6FEB),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_currentPage + 1} / $_totalPages',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: _currentPage < _totalPages - 1
+                  ? () => setState(() => _currentPage++)
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+              tooltip: 'Siguiente',
+            ),
+            IconButton(
+              onPressed: _currentPage < _totalPages - 1
+                  ? () => setState(() => _currentPage = _totalPages - 1)
+                  : null,
+              icon: const Icon(Icons.last_page),
+              color: const Color(0xFF1D6FEB),
+              disabledColor: const Color(0xFFCBD5E1),
+              tooltip: 'Última página',
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -747,7 +674,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
           2: FlexColumnWidth(1),
           3: FlexColumnWidth(2),
           4: FlexColumnWidth(1.5),
-          5: FlexColumnWidth(1),
+          5: FlexColumnWidth(0.8),
+          6: FlexColumnWidth(1),
         },
         children: [
           TableRow(
@@ -760,10 +688,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
               _TableHeader('Precio'),
               _TableHeader('Stock'),
               _TableHeader('Estado'),
+              _TableHeader('Venta'),
               _TableHeader(''),
             ],
           ),
-          ..._filtered.map((p) => _buildTableRow(p)),
+          ..._paginated.map((p) => _buildTableRow(p)),
         ],
       ),
     );
@@ -776,6 +705,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final barWidth = minStock > 0
         ? (stock / (minStock * 2)).clamp(0.0, 1.0)
         : 1.0;
+    final forSale = product['for_sale'] as bool? ?? true;
 
     return TableRow(
       decoration: const BoxDecoration(
@@ -856,9 +786,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
           child: _StockBadge(status: stockStatus.$1),
         ),
         Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Icon(
+            forSale ? Icons.check_circle_outline : Icons.block_outlined,
+            size: 18,
+            color: forSale ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: TextButton(
-            onPressed: () => _showAddStockDialog(product),
+            onPressed: () async {
+              final result = await showDialog<bool>(
+                context: context,
+                builder: (_) => ProductFormDialog(product: product),
+              );
+              if (result == true) _loadProducts();
+            },
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF1D6FEB),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -872,14 +816,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildList() {
     return ListView.separated(
-      itemCount: _filtered.length,
-      separatorBuilder: (_, _) =>
+      itemCount: _paginated.length,
+      separatorBuilder: (_, __) =>
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
       itemBuilder: (ctx, i) {
-        final p = _filtered[i];
+        final p = _paginated[i];
         final stock = p['stock'] as int? ?? 0;
         final minStock = p['min_stock'] as int? ?? 0;
         final stockStatus = _getStockStatus(stock, minStock);
+        final forSale = p['for_sale'] as bool? ?? true;
 
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
@@ -908,13 +853,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _StockBadge(status: stockStatus.$1),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              Icon(
+                forSale ? Icons.check_circle_outline : Icons.block_outlined,
+                size: 16,
+                color: forSale
+                    ? const Color(0xFF16A34A)
+                    : const Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(
-                  Icons.add_circle_outline,
+                  Icons.edit_outlined,
                   color: Color(0xFF1D6FEB),
+                  size: 18,
                 ),
-                onPressed: () => _showAddStockDialog(p),
+                onPressed: () async {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => ProductFormDialog(product: p),
+                  );
+                  if (result == true) _loadProducts();
+                },
               ),
             ],
           ),
@@ -924,11 +884,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   (String, Color) _getStockStatus(int stock, int minStock) {
-    if (stock < minStock) {
-      return ('Crítico', const Color(0xFFDC2626));
-    } else if (stock < minStock * 1.5) {
-      return ('Bajo', const Color(0xFFD97706));
-    }
+    if (stock < minStock) return ('Crítico', const Color(0xFFDC2626));
+    if (stock < minStock * 1.5) return ('Bajo', const Color(0xFFD97706));
     return ('OK', const Color(0xFF16A34A));
   }
 
@@ -955,6 +912,77 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 }
 
+// ==================== SCANNER ====================
+
+class _ScannerScreen extends StatefulWidget {
+  const _ScannerScreen();
+
+  @override
+  State<_ScannerScreen> createState() => _ScannerScreenState();
+}
+
+class _ScannerScreenState extends State<_ScannerScreen> {
+  bool _scanned = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Escanear producto'),
+        backgroundColor: const Color(0xFF1D6FEB),
+        foregroundColor: Colors.white,
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            onDetect: (capture) {
+              if (_scanned) return;
+              final barcode = capture.barcodes.firstOrNull;
+              final value = barcode?.rawValue;
+              if (value != null && value.isNotEmpty) {
+                _scanned = true;
+                Navigator.pop(context, value);
+              }
+            },
+          ),
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFF1D6FEB), width: 2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Apunta al código de barras o QR del producto',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ==================== WIDGETS AUXILIARES ====================
 
 class _FilterDropdown extends StatelessWidget {
@@ -969,6 +997,14 @@ class _FilterDropdown extends StatelessWidget {
     required this.displayNames,
     required this.onChanged,
   });
+
+  static const _displayNames = {
+    'tintes': 'Tintes',
+    'champus': 'Champús',
+    'tratamientos': 'Tratamientos',
+    'unas': 'Uñas',
+    'Todas': 'Todas',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -988,7 +1024,7 @@ class _FilterDropdown extends StatelessWidget {
               .map(
                 (cat) => DropdownMenuItem(
                   value: cat,
-                  child: Text(displayNames[cat] ?? cat),
+                  child: Text(_displayNames[cat] ?? cat),
                 ),
               )
               .toList(),

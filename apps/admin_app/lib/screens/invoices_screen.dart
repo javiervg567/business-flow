@@ -23,6 +23,73 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   bool _loadingSales = true;
   bool _loadingPurchases = true;
 
+  static const int _pageSize = 10;
+  int _salePage = 0;
+  int _purchasePage = 0;
+  DateTimeRange? _saleDateRange;
+  DateTimeRange? _purchaseDateRange;
+
+  List<Map<String, dynamic>> get _filteredSales {
+    if (_saleDateRange == null) return _saleInvoices;
+    return _saleInvoices.where((i) {
+      final date = DateTime.tryParse(i['issued_at'] ?? '')?.toLocal();
+      if (date == null) return false;
+      final from = DateTime(
+        _saleDateRange!.start.year,
+        _saleDateRange!.start.month,
+        _saleDateRange!.start.day,
+      );
+      final to = DateTime(
+        _saleDateRange!.end.year,
+        _saleDateRange!.end.month,
+        _saleDateRange!.end.day,
+        23,
+        59,
+        59,
+      );
+      return date.isAfter(from.subtract(const Duration(seconds: 1))) &&
+          date.isBefore(to.add(const Duration(seconds: 1)));
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredPurchases {
+    if (_purchaseDateRange == null) return _purchaseInvoices;
+    return _purchaseInvoices.where((i) {
+      final date = DateTime.tryParse(i['issued_at'] ?? '')?.toLocal();
+      if (date == null) return false;
+      final from = DateTime(
+        _purchaseDateRange!.start.year,
+        _purchaseDateRange!.start.month,
+        _purchaseDateRange!.start.day,
+      );
+      final to = DateTime(
+        _purchaseDateRange!.end.year,
+        _purchaseDateRange!.end.month,
+        _purchaseDateRange!.end.day,
+        23,
+        59,
+        59,
+      );
+      return date.isAfter(from.subtract(const Duration(seconds: 1))) &&
+          date.isBefore(to.add(const Duration(seconds: 1)));
+    }).toList();
+  }
+
+  int get _saleTotalPages => (_filteredSales.length / _pageSize).ceil();
+  int get _purchaseTotalPages => (_filteredPurchases.length / _pageSize).ceil();
+
+  List<Map<String, dynamic>> get _paginatedSales {
+    final start = _salePage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _filteredSales.length);
+    return _filteredSales.sublist(start, end);
+  }
+
+  List<Map<String, dynamic>> get _paginatedPurchases {
+    final start = _purchasePage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _filteredPurchases.length);
+    return _filteredPurchases.sublist(start, end);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -41,7 +108,10 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     setState(() => _loadingSales = true);
     try {
       final data = await _invoiceService.fetchSaleInvoices();
-      setState(() => _saleInvoices = data);
+      setState(() {
+        _saleInvoices = data;
+        _salePage = 0;
+      });
     } catch (e) {
       _showError('Error cargando facturas de venta: $e');
     } finally {
@@ -53,7 +123,10 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     setState(() => _loadingPurchases = true);
     try {
       final data = await _invoiceService.fetchPurchaseInvoices();
-      setState(() => _purchaseInvoices = data);
+      setState(() {
+        _purchaseInvoices = data;
+        _purchasePage = 0;
+      });
     } catch (e) {
       _showError('Error cargando facturas de compra: $e');
     } finally {
@@ -68,9 +141,56 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
+  Future<void> _pickSaleDateRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: _saleDateRange,
+      locale: const Locale('es'),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF1D6FEB),
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (range != null)
+      setState(() {
+        _saleDateRange = range;
+        _salePage = 0;
+      });
+  }
+
+  Future<void> _pickPurchaseDateRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: _purchaseDateRange,
+      locale: const Locale('es'),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF1D6FEB),
+            onPrimary: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (range != null)
+      setState(() {
+        _purchaseDateRange = range;
+        _purchasePage = 0;
+      });
+  }
+
   Future<void> _deleteSaleInvoice(Map<String, dynamic> invoice) async {
     final number = invoice['number'] as String? ?? '';
-
     final first = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -103,9 +223,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
         ],
       ),
     );
-
     if (first != true || !mounted) return;
-
     final second = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -138,9 +256,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
         ],
       ),
     );
-
     if (second != true || !mounted) return;
-
     try {
       await SupabaseService.client
           .from('invoices')
@@ -162,7 +278,6 @@ class _InvoicesScreenState extends State<InvoicesScreen>
 
   Future<void> _deletePurchaseInvoice(Map<String, dynamic> invoice) async {
     final number = invoice['number'] as String? ?? '';
-
     final first = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -193,9 +308,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
         ],
       ),
     );
-
     if (first != true || !mounted) return;
-
     final second = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -228,9 +341,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
         ],
       ),
     );
-
     if (second != true || !mounted) return;
-
     try {
       await SupabaseService.client
           .from('purchase_invoices')
@@ -371,61 +482,117 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   }
 
   Widget _buildSalesList() {
-    if (_loadingSales) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_saleInvoices.isEmpty) {
-      return _buildEmpty('No hay facturas de venta', Icons.receipt_long);
-    }
-    return RefreshIndicator(
-      onRefresh: _loadSales,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(24),
-        itemCount: _saleInvoices.length,
-        itemBuilder: (context, i) => _SaleInvoiceCard(
-          invoice: _saleInvoices[i],
-          onTap: () => _openSaleDetail(_saleInvoices[i]),
-          onStatusChange: (status) async {
-            await _invoiceService.updateSaleInvoiceStatus(
-              _saleInvoices[i]['id'],
-              status,
-            );
-            _loadSales();
-          },
-          onDelete: () => _deleteSaleInvoice(_saleInvoices[i]),
+    if (_loadingSales) return const Center(child: CircularProgressIndicator());
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: _DateRangeButton(
+            dateRange: _saleDateRange,
+            onTap: _pickSaleDateRange,
+            onClear: () => setState(() {
+              _saleDateRange = null;
+              _salePage = 0;
+            }),
+          ),
         ),
-      ),
+        if (_filteredSales.isEmpty)
+          Expanded(
+            child: _buildEmpty('No hay facturas de venta', Icons.receipt_long),
+          )
+        else
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadSales,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(24),
+                itemCount: _paginatedSales.length,
+                itemBuilder: (context, i) => _SaleInvoiceCard(
+                  invoice: _paginatedSales[i],
+                  onTap: () => _openSaleDetail(_paginatedSales[i]),
+                  onStatusChange: (status) async {
+                    await _invoiceService.updateSaleInvoiceStatus(
+                      _paginatedSales[i]['id'],
+                      status,
+                    );
+                    _loadSales();
+                  },
+                  onDelete: () => _deleteSaleInvoice(_paginatedSales[i]),
+                ),
+              ),
+            ),
+          ),
+        _buildPagination(
+          currentPage: _salePage,
+          totalPages: _saleTotalPages,
+          total: _filteredSales.length,
+          label: 'facturas',
+          onFirst: () => setState(() => _salePage = 0),
+          onPrev: () => setState(() => _salePage--),
+          onNext: () => setState(() => _salePage++),
+          onLast: () => setState(() => _salePage = _saleTotalPages - 1),
+        ),
+      ],
     );
   }
 
   Widget _buildPurchasesList() {
-    if (_loadingPurchases) {
+    if (_loadingPurchases)
       return const Center(child: CircularProgressIndicator());
-    }
-    if (_purchaseInvoices.isEmpty) {
-      return _buildEmpty(
-        'No hay facturas de compra',
-        Icons.local_shipping_outlined,
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _loadPurchases,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(24),
-        itemCount: _purchaseInvoices.length,
-        itemBuilder: (context, i) => _PurchaseInvoiceCard(
-          invoice: _purchaseInvoices[i],
-          onTap: () => _openPurchaseDetail(_purchaseInvoices[i]),
-          onStatusChange: (status) async {
-            await _invoiceService.updatePurchaseInvoiceStatus(
-              _purchaseInvoices[i]['id'],
-              status,
-            );
-            _loadPurchases();
-          },
-          onDelete: () => _deletePurchaseInvoice(_purchaseInvoices[i]),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: _DateRangeButton(
+            dateRange: _purchaseDateRange,
+            onTap: _pickPurchaseDateRange,
+            onClear: () => setState(() {
+              _purchaseDateRange = null;
+              _purchasePage = 0;
+            }),
+          ),
         ),
-      ),
+        if (_filteredPurchases.isEmpty)
+          Expanded(
+            child: _buildEmpty(
+              'No hay facturas de compra',
+              Icons.local_shipping_outlined,
+            ),
+          )
+        else
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadPurchases,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(24),
+                itemCount: _paginatedPurchases.length,
+                itemBuilder: (context, i) => _PurchaseInvoiceCard(
+                  invoice: _paginatedPurchases[i],
+                  onTap: () => _openPurchaseDetail(_paginatedPurchases[i]),
+                  onStatusChange: (status) async {
+                    await _invoiceService.updatePurchaseInvoiceStatus(
+                      _paginatedPurchases[i]['id'],
+                      status,
+                    );
+                    _loadPurchases();
+                  },
+                  onDelete: () =>
+                      _deletePurchaseInvoice(_paginatedPurchases[i]),
+                ),
+              ),
+            ),
+          ),
+        _buildPagination(
+          currentPage: _purchasePage,
+          totalPages: _purchaseTotalPages,
+          total: _filteredPurchases.length,
+          label: 'facturas',
+          onFirst: () => setState(() => _purchasePage = 0),
+          onPrev: () => setState(() => _purchasePage--),
+          onNext: () => setState(() => _purchasePage++),
+          onLast: () => setState(() => _purchasePage = _purchaseTotalPages - 1),
+        ),
+      ],
     );
   }
 
@@ -439,6 +606,77 @@ class _InvoicesScreenState extends State<InvoicesScreen>
           Text(
             msg,
             style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPagination({
+    required int currentPage,
+    required int totalPages,
+    required int total,
+    required String label,
+    required VoidCallback onFirst,
+    required VoidCallback onPrev,
+    required VoidCallback onNext,
+    required VoidCallback onLast,
+  }) {
+    if (totalPages <= 1) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Mostrando ${currentPage * _pageSize + 1}–${((currentPage + 1) * _pageSize).clamp(0, total)} de $total $label',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
+          Row(
+            children: [
+              IconButton(
+                onPressed: currentPage > 0 ? onFirst : null,
+                icon: const Icon(Icons.first_page),
+                color: const Color(0xFF1D6FEB),
+                disabledColor: const Color(0xFFCBD5E1),
+              ),
+              IconButton(
+                onPressed: currentPage > 0 ? onPrev : null,
+                icon: const Icon(Icons.chevron_left),
+                color: const Color(0xFF1D6FEB),
+                disabledColor: const Color(0xFFCBD5E1),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D6FEB),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${currentPage + 1} / $totalPages',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: currentPage < totalPages - 1 ? onNext : null,
+                icon: const Icon(Icons.chevron_right),
+                color: const Color(0xFF1D6FEB),
+                disabledColor: const Color(0xFFCBD5E1),
+              ),
+              IconButton(
+                onPressed: currentPage < totalPages - 1 ? onLast : null,
+                icon: const Icon(Icons.last_page),
+                color: const Color(0xFF1D6FEB),
+                disabledColor: const Color(0xFFCBD5E1),
+              ),
+            ],
           ),
         ],
       ),
@@ -484,6 +722,77 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       builder: (_) => PurchaseInvoiceDetailSheet(
         invoice: invoice,
         invoiceService: _invoiceService,
+      ),
+    );
+  }
+}
+
+// ── FILTRO FECHAS ─────────────────────────────────────────
+
+class _DateRangeButton extends StatelessWidget {
+  final DateTimeRange? dateRange;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  const _DateRangeButton({
+    required this.dateRange,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRange = dateRange != null;
+    final label = hasRange
+        ? '${dateRange!.start.day}/${dateRange!.start.month}/${dateRange!.start.year} – ${dateRange!.end.day}/${dateRange!.end.month}/${dateRange!.end.year}'
+        : 'Filtrar por fechas';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: hasRange ? const Color(0xFFEEF5FF) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: hasRange ? const Color(0xFF1D6FEB) : const Color(0xFFE2E8F2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.date_range,
+              size: 16,
+              color: hasRange
+                  ? const Color(0xFF1D6FEB)
+                  : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: hasRange
+                    ? const Color(0xFF1D6FEB)
+                    : const Color(0xFF64748B),
+              ),
+            ),
+            if (hasRange) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(
+                  Icons.close,
+                  size: 14,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

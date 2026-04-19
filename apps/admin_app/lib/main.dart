@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
 import 'screens/login_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,12 @@ class AdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('es')],
       title: 'Business Flow — Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

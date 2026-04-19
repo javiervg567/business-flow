@@ -4,6 +4,24 @@ class InvoiceService {
   final SupabaseClient _client;
   InvoiceService(this._client);
 
+  // ── GENERADORES DE NÚMEROS ───────────────────────────────
+
+  Future<String> generateSaleInvoiceNumber(String businessId) async {
+    final result = await _client.rpc(
+      'generate_sale_invoice_number',
+      params: {'p_business_id': businessId},
+    );
+    return result as String;
+  }
+
+  Future<String> generatePurchaseInvoiceNumber(String businessId) async {
+    final result = await _client.rpc(
+      'generate_purchase_invoice_number',
+      params: {'p_business_id': businessId},
+    );
+    return result as String;
+  }
+
   // ── VENTAS ──────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchSaleInvoices() async {
@@ -29,6 +47,7 @@ class InvoiceService {
     required String number,
     required List<Map<String, dynamic>> lines,
     required double taxRate,
+    String status = 'pending',
   }) async {
     final subtotal = lines.fold<double>(
       0,
@@ -37,16 +56,23 @@ class InvoiceService {
     final taxAmount = subtotal * taxRate;
     final total = subtotal + taxAmount;
 
+    final businessId = (await _client
+        .from('profiles')
+        .select('business_id')
+        .eq('id', clientId)
+        .single())['business_id'];
+
     final invoice = await _client
         .from('invoices')
         .insert({
+          'business_id': businessId,
           'client_id': clientId,
           'booking_id': bookingId,
           'number': number,
           'subtotal': subtotal,
           'tax_amount': taxAmount,
           'total': total,
-          'status': 'pending',
+          'status': status,
         })
         .select()
         .single();
@@ -66,6 +92,27 @@ class InvoiceService {
     }).toList();
 
     await _client.from('invoice_lines').insert(lineRows);
+
+    // Descontar stock de los productos vendidos
+    final productLines = lines.where((l) => l['product_id'] != null).toList();
+    for (final line in productLines) {
+      final productId = line['product_id'] as String;
+      final qty = (line['quantity'] as double).round();
+
+      final product = await _client
+          .from('products')
+          .select('stock')
+          .eq('id', productId)
+          .single();
+
+      final currentStock = (product['stock'] as num).toInt();
+      final newStock = (currentStock - qty).clamp(0, 999999);
+
+      await _client
+          .from('products')
+          .update({'stock': newStock})
+          .eq('id', productId);
+    }
   }
 
   // ── COMPRAS ─────────────────────────────────────────────

@@ -15,6 +15,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _pendingBookings = 0;
   int _criticalStock = 0;
   int _totalClients = 0;
+  double _monthSales = 0;
+  double _monthPurchases = 0;
+  double _monthProfit = 0;
   List<Map<String, dynamic>> _upcomingBookings = [];
   List<Map<String, dynamic>> _lowStockProducts = [];
 
@@ -31,59 +34,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
       final todayEnd = todayStart.add(const Duration(days: 1));
+      final monthStart = DateTime(now.year, now.month, 1);
 
-      // Reservas de hoy
-      final todayBookingsRes = await client
-          .from('bookings')
-          .select()
-          .eq('business_id', businessId)
-          .gte('start_at', todayStart.toIso8601String())
-          .lt('start_at', todayEnd.toIso8601String());
+      final results = await Future.wait([
+        // Reservas de hoy
+        client
+            .from('bookings')
+            .select('id')
+            .eq('business_id', businessId)
+            .gte('start_at', todayStart.toIso8601String())
+            .lt('start_at', todayEnd.toIso8601String()),
 
-      // Reservas pendientes
-      final pendingRes = await client
-          .from('bookings')
-          .select()
-          .eq('business_id', businessId)
-          .eq('status', 'pending');
+        // Reservas pendientes
+        client
+            .from('bookings')
+            .select('id')
+            .eq('business_id', businessId)
+            .eq('status', 'pending'),
 
-      // Productos con stock crítico
-      final stockRes = await client
-          .from('products')
-          .select()
-          .eq('business_id', businessId);
+        // Todos los productos (para calcular stock crítico)
+        client
+            .from('products')
+            .select('stock, min_stock, name, sku')
+            .eq('business_id', businessId),
 
-      final lowStock = (stockRes as List)
+        // Total clientes
+        client
+            .from('profiles')
+            .select('id')
+            .eq('business_id', businessId)
+            .eq('role', 'client'),
+
+        // Próximas reservas
+        client
+            .from('bookings')
+            .select(
+              '*, client:profiles!bookings_client_id_fkey(full_name), service:services(name)',
+            )
+            .eq('business_id', businessId)
+            .gte('start_at', now.toIso8601String())
+            .neq('status', 'cancelled')
+            .order('start_at')
+            .limit(5),
+
+        // Facturas de venta del mes (paid)
+        client
+            .from('invoices')
+            .select('total')
+            .eq('business_id', businessId)
+            .eq('status', 'paid')
+            .gte('issued_at', monthStart.toIso8601String()),
+
+        // Facturas de compra del mes (paid)
+        client
+            .from('purchase_invoices')
+            .select('total')
+            .eq('business_id', businessId)
+            .eq('status', 'paid')
+            .gte('issued_at', monthStart.toIso8601String()),
+      ]);
+
+      final allProducts = (results[2] as List).cast<Map<String, dynamic>>();
+      final lowStock = allProducts
           .where((p) => (p['stock'] as int) < (p['min_stock'] as int))
           .toList();
 
-      // Total clientes
-      final clientsRes = await client
-          .from('profiles')
-          .select()
-          .eq('business_id', businessId)
-          .eq('role', 'client');
+      final salesList = (results[5] as List).cast<Map<String, dynamic>>();
+      final purchasesList = (results[6] as List).cast<Map<String, dynamic>>();
 
-      // Próximas reservas (con datos del cliente y servicio)
-      final upcomingRes = await client
-          .from('bookings')
-          .select(
-            '*, client:profiles!bookings_client_id_fkey(full_name), service:services(name)',
-          )
-          .eq('business_id', businessId)
-          .gte('start_at', now.toIso8601String())
-          .neq('status', 'cancelled')
-          .order('start_at')
-          .limit(5);
+      final monthSales = salesList.fold<double>(
+        0,
+        (sum, i) => sum + (i['total'] as num).toDouble(),
+      );
+      final monthPurchases = purchasesList.fold<double>(
+        0,
+        (sum, i) => sum + (i['total'] as num).toDouble(),
+      );
 
       if (!mounted) return;
       setState(() {
-        _todayBookings = (todayBookingsRes as List).length;
-        _pendingBookings = (pendingRes as List).length;
+        _todayBookings = (results[0] as List).length;
+        _pendingBookings = (results[1] as List).length;
         _criticalStock = lowStock.length;
-        _totalClients = (clientsRes as List).length;
-        _lowStockProducts = lowStock.cast<Map<String, dynamic>>();
-        _upcomingBookings = (upcomingRes as List).cast<Map<String, dynamic>>();
+        _totalClients = (results[3] as List).length;
+        _upcomingBookings = (results[4] as List).cast<Map<String, dynamic>>();
+        _lowStockProducts = lowStock;
+        _monthSales = monthSales;
+        _monthPurchases = monthPurchases;
+        _monthProfit = monthSales - monthPurchases;
         _loading = false;
       });
     } catch (e) {
@@ -94,16 +132,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Saludo
           Text(
             _getGreeting(),
             style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
@@ -115,7 +150,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 20),
 
-          // KPIs
+          // KPIs operacionales
+          _buildSectionLabel('Operaciones'),
+          const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
               final crossCount = constraints.maxWidth > 700 ? 4 : 2;
@@ -123,57 +160,116 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _buildKpi(
+                  _kpi(
                     constraints,
                     crossCount,
-                    Icons.calendar_month,
-                    const Color(0xFFEEF5FF),
-                    const Color(0xFF1D6FEB),
-                    'Reservas hoy',
-                    '$_todayBookings',
-                    '$_pendingBookings pendientes',
-                    true,
+                    icon: Icons.calendar_month,
+                    iconBg: const Color(0xFFEEF5FF),
+                    iconColor: const Color(0xFF1D6FEB),
+                    label: 'Reservas hoy',
+                    value: '$_todayBookings',
+                    delta: '$_pendingBookings pendientes',
+                    deltaPositive: true,
                   ),
-                  _buildKpi(
+                  _kpi(
                     constraints,
                     crossCount,
-                    Icons.inventory_2,
-                    const Color(0xFFFFFBEB),
-                    const Color(0xFFD97706),
-                    'Stock crítico',
-                    '$_criticalStock',
-                    _criticalStock > 0 ? 'Requiere atención' : 'Todo en orden',
-                    _criticalStock == 0,
+                    icon: Icons.pending_actions,
+                    iconBg: const Color(0xFFF0FDF4),
+                    iconColor: const Color(0xFF16A34A),
+                    label: 'Por confirmar',
+                    value: '$_pendingBookings',
+                    delta: 'reservas pendientes',
+                    deltaPositive: _pendingBookings == 0,
                   ),
-                  _buildKpi(
+                  _kpi(
                     constraints,
                     crossCount,
-                    Icons.people_outline,
-                    const Color(0xFFF5F3FF),
-                    const Color(0xFF7C3AED),
-                    'Clientes',
-                    '$_totalClients',
-                    'registrados',
-                    true,
+                    icon: Icons.inventory_2,
+                    iconBg: const Color(0xFFFFFBEB),
+                    iconColor: const Color(0xFFD97706),
+                    label: 'Stock crítico',
+                    value: '$_criticalStock',
+                    delta: _criticalStock > 0
+                        ? 'Requiere atención'
+                        : 'Todo en orden',
+                    deltaPositive: _criticalStock == 0,
                   ),
-                  _buildKpi(
+                  _kpi(
                     constraints,
                     crossCount,
-                    Icons.pending_actions,
-                    const Color(0xFFF0FDF4),
-                    const Color(0xFF16A34A),
-                    'Pendientes',
-                    '$_pendingBookings',
-                    'por confirmar',
-                    false,
+                    icon: Icons.people_outline,
+                    iconBg: const Color(0xFFF5F3FF),
+                    iconColor: const Color(0xFF7C3AED),
+                    label: 'Clientes',
+                    value: '$_totalClients',
+                    delta: 'registrados',
+                    deltaPositive: true,
                   ),
                 ],
               );
             },
           ),
+
           const SizedBox(height: 20),
 
-          // Dos columnas: próximas reservas + stock crítico
+          // KPIs financieros del mes
+          _buildSectionLabel(
+            'Facturación — ${_monthName(DateTime.now().month)}',
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final crossCount = constraints.maxWidth > 700 ? 3 : 1;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _kpi(
+                    constraints,
+                    crossCount,
+                    icon: Icons.trending_up,
+                    iconBg: const Color(0xFFEEF5FF),
+                    iconColor: const Color(0xFF1D6FEB),
+                    label: 'Ingresos del mes',
+                    value: '${_monthSales.toStringAsFixed(2)} €',
+                    delta: 'facturas de venta pagadas',
+                    deltaPositive: true,
+                  ),
+                  _kpi(
+                    constraints,
+                    crossCount,
+                    icon: Icons.trending_down,
+                    iconBg: const Color(0xFFFEF2F2),
+                    iconColor: const Color(0xFFDC2626),
+                    label: 'Gastos del mes',
+                    value: '${_monthPurchases.toStringAsFixed(2)} €',
+                    delta: 'facturas de compra pagadas',
+                    deltaPositive: false,
+                  ),
+                  _kpi(
+                    constraints,
+                    crossCount,
+                    icon: Icons.account_balance_wallet_outlined,
+                    iconBg: _monthProfit >= 0
+                        ? const Color(0xFFF0FDF4)
+                        : const Color(0xFFFEF2F2),
+                    iconColor: _monthProfit >= 0
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFDC2626),
+                    label: 'Beneficio neto',
+                    value: '${_monthProfit.toStringAsFixed(2)} €',
+                    delta: _monthProfit >= 0 ? 'positivo' : 'negativo',
+                    deltaPositive: _monthProfit >= 0,
+                  ),
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+
+          // Próximas reservas + Stock crítico
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth > 700) {
@@ -200,17 +296,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildKpi(
+  Widget _buildSectionLabel(String label) {
+    return Text(
+      label.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF64748B),
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  Widget _kpi(
     BoxConstraints constraints,
-    int crossCount,
-    IconData icon,
-    Color iconBg,
-    Color iconColor,
-    String label,
-    String value,
-    String delta,
-    bool deltaUp,
-  ) {
+    int crossCount, {
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String delta,
+    required bool deltaPositive,
+  }) {
     final width = (constraints.maxWidth - 12 * (crossCount - 1)) / crossCount;
     return SizedBox(
       width: width,
@@ -221,7 +329,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         label: label,
         value: value,
         delta: delta,
-        deltaUp: deltaUp,
+        deltaUp: deltaPositive,
       ),
     );
   }
@@ -237,14 +345,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Próximas reservas',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-            ],
+          const Text(
+            'Próximas reservas',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           if (_upcomingBookings.isEmpty)
@@ -403,10 +506,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  String _monthName(int month) {
+    const months = [
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
+    ];
+    return months[month - 1];
+  }
+
   String _getGreeting() {
     final hour = DateTime.now().hour;
     final now = DateTime.now();
-    final days = [
+    const days = [
       'Lunes',
       'Martes',
       'Miércoles',
@@ -415,7 +536,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Sábado',
       'Domingo',
     ];
-    final months = [
+    const months = [
       'enero',
       'febrero',
       'marzo',
@@ -431,15 +552,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
     final dayName = days[now.weekday - 1];
     final monthName = months[now.month - 1];
-
-    String greeting;
-    if (hour < 12) {
-      greeting = 'Buenos días';
-    } else if (hour < 20) {
-      greeting = 'Buenas tardes';
-    } else {
-      greeting = 'Buenas noches';
-    }
+    final greeting = hour < 12
+        ? 'Buenos días'
+        : hour < 20
+        ? 'Buenas tardes'
+        : 'Buenas noches';
     return '$dayName, ${now.day} de $monthName de ${now.year} · $greeting';
   }
 }
@@ -476,7 +593,6 @@ class _KpiCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             width: 36,
@@ -495,7 +611,7 @@ class _KpiCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 2),
           Text(
@@ -519,45 +635,46 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bg;
-    Color text;
-    String label;
-
-    switch (status) {
-      case 'confirmed':
-        bg = const Color(0xFFF0FDF4);
-        text = const Color(0xFF16A34A);
-        label = 'Confirmada';
-      case 'pending':
-        bg = const Color(0xFFFFFBEB);
-        text = const Color(0xFFD97706);
-        label = 'Pendiente';
-      case 'completed':
-        bg = const Color(0xFFEEF5FF);
-        text = const Color(0xFF1D6FEB);
-        label = 'Completada';
-      case 'cancelled':
-        bg = const Color(0xFFFEF2F2);
-        text = const Color(0xFFDC2626);
-        label = 'Cancelada';
-      default:
-        bg = const Color(0xFFF1F5F9);
-        text = const Color(0xFF64748B);
-        label = status;
-    }
+    final config = switch (status) {
+      'confirmed' => (
+        bg: const Color(0xFFF0FDF4),
+        text: const Color(0xFF16A34A),
+        label: 'Confirmada',
+      ),
+      'pending' => (
+        bg: const Color(0xFFFFFBEB),
+        text: const Color(0xFFD97706),
+        label: 'Pendiente',
+      ),
+      'completed' => (
+        bg: const Color(0xFFEEF5FF),
+        text: const Color(0xFF1D6FEB),
+        label: 'Completada',
+      ),
+      'cancelled' => (
+        bg: const Color(0xFFFEF2F2),
+        text: const Color(0xFFDC2626),
+        label: 'Cancelada',
+      ),
+      _ => (
+        bg: const Color(0xFFF1F5F9),
+        text: const Color(0xFF64748B),
+        label: status,
+      ),
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: bg,
+        color: config.bg,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        label,
+        config.label,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w500,
-          color: text,
+          color: config.text,
         ),
       ),
     );

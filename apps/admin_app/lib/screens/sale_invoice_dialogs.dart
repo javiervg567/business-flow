@@ -18,16 +18,20 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
   final _taxCtrl = TextEditingController(text: '21');
 
   List<Map<String, dynamic>> _clients = [];
+  List<Map<String, dynamic>> _products = [];
   String? _selectedClientId;
   bool _loadingClients = true;
+  bool _loadingProducts = true;
   bool _saving = false;
 
-  final List<InvoiceLineItem> _lines = [InvoiceLineItem()];
+  final List<InvoiceLineItem> _lines = [];
 
   @override
   void initState() {
     super.initState();
     _loadClients();
+    _loadProducts();
+    _loadNextNumber();
   }
 
   @override
@@ -35,6 +39,19 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
     _numberCtrl.dispose();
     _taxCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadNextNumber() async {
+    try {
+      final profile = await AuthService.getCurrentProfile();
+      final number = await widget.invoiceService.generateSaleInvoiceNumber(
+        profile?['business_id'] as String,
+      );
+      if (!mounted) return;
+      _numberCtrl.text = number;
+    } catch (e) {
+      // Si falla dejamos el campo vacío
+    }
   }
 
   Future<void> _loadClients() async {
@@ -53,17 +70,30 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
     }
   }
 
+  Future<void> _loadProducts() async {
+    try {
+      final data = await SupabaseService.client
+          .from('products')
+          .select('id, name, price, stock, min_stock, for_sale')
+          .eq('for_sale', true)
+          .order('name');
+      if (!mounted) return;
+      setState(() => _products = List<Map<String, dynamic>>.from(data));
+    } catch (e) {
+      // Si falla seguimos sin productos
+    } finally {
+      if (mounted) setState(() => _loadingProducts = false);
+    }
+  }
+
   double get _subtotal =>
       _lines.fold(0, (sum, l) => sum + l.quantity * l.unitPrice);
-
   double get _taxAmount => _subtotal * (_taxRate / 100);
   double get _total => _subtotal + _taxAmount;
   double get _taxRate => double.tryParse(_taxCtrl.text) ?? 0;
 
-  void _addLine() => setState(() => _lines.add(InvoiceLineItem()));
-  void _removeLine(int i) {
-    if (_lines.length > 1) setState(() => _lines.removeAt(i));
-  }
+  void _addManualLine() => setState(() => _lines.add(InvoiceLineItem()));
+  void _removeLine(int i) => setState(() => _lines.removeAt(i));
 
   void _showError(String msg) {
     if (!mounted) return;
@@ -72,10 +102,108 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
     ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
+  void _showProductPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Seleccionar producto',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: SizedBox(
+          width: 360,
+          height: 400,
+          child: _loadingProducts
+              ? const Center(child: CircularProgressIndicator())
+              : _products.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay productos disponibles',
+                    style: TextStyle(color: Color(0xFF94A3B8)),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: _products.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  itemBuilder: (_, i) {
+                    final product = _products[i];
+                    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+                    final stock = (product['stock'] as num?)?.toInt() ?? 0;
+                    final minStock =
+                        (product['min_stock'] as num?)?.toInt() ?? 0;
+                    final statusColor = stock < minStock
+                        ? const Color(0xFFDC2626)
+                        : stock < minStock * 1.5
+                        ? const Color(0xFFD97706)
+                        : const Color(0xFF16A34A);
+
+                    return ListTile(
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2_outlined,
+                          color: Color(0xFF1D6FEB),
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(
+                        product['name'] as String? ?? '',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        'Stock: $stock uds',
+                        style: TextStyle(fontSize: 12, color: statusColor),
+                      ),
+                      trailing: Text(
+                        '${price.toStringAsFixed(2)} €',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1D6FEB),
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _lines.add(
+                            InvoiceLineItem()
+                              ..description = product['name'] as String? ?? ''
+                              ..quantity = 1.0
+                              ..unitPrice = price
+                              ..productId = product['id'] as String?,
+                          );
+                        });
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedClientId == null) {
       _showError('Selecciona un cliente');
+      return;
+    }
+    if (_lines.isEmpty) {
+      _showError('Añade al menos una línea');
       return;
     }
     if (_lines.any((l) => l.description.isEmpty)) {
@@ -85,6 +213,42 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
 
     setState(() => _saving = true);
     try {
+      final paid = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text(
+            '¿La factura está pagada?',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          content: const Text(
+            'Indica si el cliente ha pagado en este momento o si queda pendiente.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                'Pendiente',
+                style: TextStyle(color: Color(0xFF64748B)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Pagada'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
+
       await widget.invoiceService.createSaleInvoice(
         clientId: _selectedClientId!,
         number: _numberCtrl.text.trim(),
@@ -98,6 +262,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
             )
             .toList(),
         taxRate: _taxRate / 100,
+        status: (paid == true) ? 'paid' : 'pending',
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -151,10 +316,19 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
                     onChanged: () => setState(() {}),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: _addLine,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Añadir línea'),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _showProductPicker,
+                      icon: const Icon(Icons.inventory_2_outlined, size: 16),
+                      label: const Text('Añadir producto'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _addManualLine,
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      label: const Text('Añadir manual'),
+                    ),
+                  ],
                 ),
                 const Divider(height: 24),
                 _buildTotals(),
@@ -203,7 +377,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
       return const Center(child: CircularProgressIndicator());
     }
     return DropdownButtonFormField<String>(
-      initialValue: _selectedClientId,
+      value: _selectedClientId,
       decoration: invoiceInputDeco('Cliente', Icons.person_outline),
       items: _clients
           .map(
