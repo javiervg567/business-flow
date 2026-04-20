@@ -521,8 +521,9 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   }
 
   Widget _buildPurchasesList() {
-    if (_loadingPurchases)
+    if (_loadingPurchases) {
       return const Center(child: CircularProgressIndicator());
+    }
     return Column(
       children: [
         Padding(

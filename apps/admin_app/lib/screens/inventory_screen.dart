@@ -942,7 +942,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget _buildList() {
     return ListView.separated(
       itemCount: _paginated.length,
-      separatorBuilder: (_, __) =>
+      separatorBuilder: (_, _) =>
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
       itemBuilder: (ctx, i) {
         final p = _paginated[i];

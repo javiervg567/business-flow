@@ -133,7 +133,7 @@ class _CreatePurchaseInvoiceDialogState
                 )
               : ListView.separated(
                   itemCount: _suppliers.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   itemBuilder: (_, i) {
                     final supplier = _suppliers[i];
@@ -159,10 +159,7 @@ class _CreatePurchaseInvoiceDialogState
                       ),
                       subtitle: contactName != null || phone != null
                           ? Text(
-                              [
-                                if (contactName != null) contactName,
-                                if (phone != null) phone,
-                              ].join(' · '),
+                              [?contactName, ?phone].join(' · '),
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF94A3B8),
@@ -273,7 +270,7 @@ class _CreatePurchaseInvoiceDialogState
                           )
                         : ListView.separated(
                             itemCount: filtered.length,
-                            separatorBuilder: (_, __) => const Divider(
+                            separatorBuilder: (_, _) => const Divider(
                               height: 1,
                               color: Color(0xFFF1F5F9),
                             ),

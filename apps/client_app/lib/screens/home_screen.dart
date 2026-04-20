@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
-import 'login_screen.dart';
 import 'bookings_screen.dart';
 import 'profile_screen.dart';
 import 'business_selection_screen.dart';
@@ -82,6 +81,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
   bool _loading = true;
   Map<String, dynamic>? _nextBooking;
   Map<String, dynamic>? _business;
+  List<Map<String, dynamic>> _services = [];
 
   @override
   void initState() {
@@ -93,6 +93,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     try {
       final client = SupabaseService.client;
       final clientId = widget.profile['id'];
+      final businessId = widget.profile['business_id'];
       final now = DateTime.now();
 
       final results = await Future.wait([
@@ -109,17 +110,25 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         client
             .from('businesses')
             .select('id, name, phone, address')
-            .eq('id', widget.profile['business_id'])
+            .eq('id', businessId)
             .limit(1),
+        client
+            .from('services')
+            .select('id, name, duration_minutes, price, description, image_url')
+            .eq('business_id', businessId)
+            .eq('active', true)
+            .order('name'),
       ]);
 
       if (!mounted) return;
       final bookings = (results[0] as List).cast<Map<String, dynamic>>();
       final businesses = (results[1] as List).cast<Map<String, dynamic>>();
+      final services = (results[2] as List).cast<Map<String, dynamic>>();
 
       setState(() {
         _nextBooking = bookings.isNotEmpty ? bookings.first : null;
         _business = businesses.isNotEmpty ? businesses.first : null;
+        _services = services;
         _loading = false;
       });
     } catch (e) {
@@ -238,7 +247,6 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                         ],
                       ),
                     ),
-                    // Botón cambiar negocio
                     GestureDetector(
                       onTap: () => context
                           .findAncestorStateOfType<_HomeScreenState>()
@@ -329,60 +337,59 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
             else
               _buildNextBookingCard(_nextBooking!),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
 
-            // Acciones rápidas
-            const Text(
-              'ACCIONES RÁPIDAS',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 10),
+            // ── NUESTROS SERVICIOS ──────────────────────────────
             Row(
               children: [
-                Expanded(
-                  child: _quickAction(
-                    icon: Icons.add_circle_outline,
-                    label: 'Nueva cita',
-                    color: const Color(0xFF16A34A),
-                    bg: const Color(0xFFF0FDF4),
-                    onTap: () => context
-                        .findAncestorStateOfType<_HomeScreenState>()
-                        ?.navigateTo(1),
+                const Expanded(
+                  child: Text(
+                    'NUESTROS SERVICIOS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _quickAction(
-                    icon: Icons.store_outlined,
-                    label: 'Negocios',
-                    color: const Color(0xFF0D9488),
-                    bg: const Color(0xFFF0FDFA),
-                    onTap: () => context
-                        .findAncestorStateOfType<_HomeScreenState>()
-                        ?.navigateTo(2),
+                if (_services.isNotEmpty)
+                  Text(
+                    '${_services.length} disponibles',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF94A3B8),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _quickAction(
-                    icon: Icons.person_outline,
-                    label: 'Mi perfil',
-                    color: const Color(0xFF16A34A),
-                    bg: const Color(0xFFDCFCE7),
-                    onTap: () => context
-                        .findAncestorStateOfType<_HomeScreenState>()
-                        ?.navigateTo(3),
-                  ),
-                ),
               ],
             ),
+            const SizedBox(height: 10),
 
-            const SizedBox(height: 24),
+            if (_services.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F2)),
+                ),
+                child: const Center(
+                  child: Text(
+                    'No hay servicios disponibles',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true,
+                itemCount: _services.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) => _ServiceCard(service: _services[i]),
+              ),
+
+            const SizedBox(height: 20),
 
             // Info del negocio
             if (_business != null) ...[
@@ -552,48 +559,6 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     );
   }
 
-  Widget _quickAction({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required Color bg,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F2)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _businessRow(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -633,6 +598,132 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       'diciembre',
     ];
     return months[m - 1];
+  }
+}
+
+// ── TARJETA DE SERVICIO ────────────────────────────────────────────────────────
+
+class _ServiceCard extends StatelessWidget {
+  final Map<String, dynamic> service;
+  const _ServiceCard({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = service['image_url'] as String?;
+    final name = service['name'] as String? ?? '';
+    final description = service['description'] as String?;
+    final duration = service['duration_minutes'] as int?;
+    final price = service['price'];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Imagen
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
+            ),
+            child: SizedBox(
+              width: 90,
+              height: 90,
+              child: imageUrl != null && imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _placeholder(),
+                    )
+                  : _placeholder(),
+            ),
+          ),
+          // Info
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (description != null && description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (duration != null) ...[
+                        const Icon(
+                          Icons.access_time,
+                          size: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$duration min',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      if (price != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${(price as num).toStringAsFixed(2)} €',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      color: const Color(0xFFF0FDF4),
+      child: const Icon(Icons.spa_outlined, size: 32, color: Color(0xFF86EFAC)),
+    );
   }
 }
 

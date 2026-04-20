@@ -245,10 +245,7 @@ class _SupplierCard extends StatelessWidget {
                   if (email != null || phone != null) ...[
                     const SizedBox(height: 2),
                     Text(
-                      [
-                        if (email != null) email,
-                        if (phone != null) phone,
-                      ].join(' · '),
+                      [?email, ?phone].join(' · '),
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF94A3B8),

@@ -124,7 +124,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
                 )
               : ListView.separated(
                   itemCount: _products.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   itemBuilder: (_, i) {
                     final product = _products[i];
@@ -377,7 +377,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
       return const Center(child: CircularProgressIndicator());
     }
     return DropdownButtonFormField<String>(
-      value: _selectedClientId,
+      initialValue: _selectedClientId,
       decoration: invoiceInputDeco('Cliente', Icons.person_outline),
       items: _clients
           .map(

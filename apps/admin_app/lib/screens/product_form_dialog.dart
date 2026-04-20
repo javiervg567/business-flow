@@ -235,7 +235,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                               : const Color(0xFF64748B),
                         ),
                       ),
-                      activeColor: const Color(0xFF1D6FEB),
+                      activeThumbColor: const Color(0xFF1D6FEB),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                       ),
