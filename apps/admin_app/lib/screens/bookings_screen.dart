@@ -331,7 +331,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                     const SizedBox(height: 14),
                     _label('Empleado'),
                     const SizedBox(height: 6),
-                    // Empleado: campo bloqueado con su nombre
                     if (_isEmployee)
                       Container(
                         padding: const EdgeInsets.symmetric(

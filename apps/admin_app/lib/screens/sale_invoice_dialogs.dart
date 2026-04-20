@@ -49,9 +49,7 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
       );
       if (!mounted) return;
       _numberCtrl.text = number;
-    } catch (e) {
-      // Si falla dejamos el campo vacío
-    }
+    } catch (e) {}
   }
 
   Future<void> _loadClients() async {
@@ -80,7 +78,6 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
       if (!mounted) return;
       setState(() => _products = List<Map<String, dynamic>>.from(data));
     } catch (e) {
-      // Si falla seguimos sin productos
     } finally {
       if (mounted) setState(() => _loadingProducts = false);
     }

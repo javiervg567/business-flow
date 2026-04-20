@@ -30,7 +30,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Verificar que es admin o employee (no un cliente)
       final role = profile['role'] as String;
       if (role == 'client') {
         await AuthService.signOut();
@@ -41,7 +40,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Login correcto → navegar al dashboard
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => MainLayout(profile: profile)),

@@ -58,7 +58,7 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
       if (!mounted) return;
       setState(() => _products = List<Map<String, dynamic>>.from(data));
     } catch (e) {
-      // Si falla, simplemente no mostramos productos
+      // Si falla, no mostramos productos
     } finally {
       if (mounted) setState(() => _loadingProducts = false);
     }

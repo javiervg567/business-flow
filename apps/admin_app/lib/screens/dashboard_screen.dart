@@ -232,9 +232,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _selectedDay = null;
         _selectedDayBookings = [];
       });
-    } catch (e) {
-      // silencioso
-    }
+    } catch (e) {}
   }
 
   Future<void> _markNotificationRead(String id) async {
