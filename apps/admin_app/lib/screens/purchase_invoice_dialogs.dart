@@ -68,7 +68,6 @@ class _CreatePurchaseInvoiceDialogState
           .order('name');
       if (!mounted) return;
       setState(() => _suppliers = List<Map<String, dynamic>>.from(data));
-    } catch (e) {
     } finally {
       if (mounted) setState(() => _loadingSuppliers = false);
     }
@@ -83,7 +82,6 @@ class _CreatePurchaseInvoiceDialogState
           .order('name');
       if (!mounted) return;
       setState(() => _products = List<Map<String, dynamic>>.from(data));
-    } catch (e) {
     } finally {
       if (mounted) setState(() => _loadingProducts = false);
     }

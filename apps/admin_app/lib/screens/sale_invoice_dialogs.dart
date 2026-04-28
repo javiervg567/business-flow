@@ -77,7 +77,6 @@ class _CreateSaleInvoiceDialogState extends State<CreateSaleInvoiceDialog> {
           .order('name');
       if (!mounted) return;
       setState(() => _products = List<Map<String, dynamic>>.from(data));
-    } catch (e) {
     } finally {
       if (mounted) setState(() => _loadingProducts = false);
     }

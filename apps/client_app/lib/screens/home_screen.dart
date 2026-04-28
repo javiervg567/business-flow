@@ -385,7 +385,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                 physics: const NeverScrollableScrollPhysics(),
                 shrinkWrap: true,
                 itemCount: _services.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (_, i) => _ServiceCard(service: _services[i]),
               ),
 
@@ -637,7 +637,7 @@ class _ServiceCard extends StatelessWidget {
                   ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _placeholder(),
+                      errorBuilder: (_, _, _) => _placeholder(),
                     )
                   : _placeholder(),
             ),
