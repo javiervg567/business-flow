@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'sale_invoice_dialogs.dart';
 import 'purchase_invoice_dialogs.dart';
 import 'suppliers_screen.dart';
@@ -502,6 +505,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
                     _loadSales();
                   },
                   onDelete: () => _deleteSaleInvoice(_paginatedSales[i]),
+                  onDownload: () => _downloadSalePdf(_paginatedSales[i]),
                 ),
               ),
             ),
@@ -563,6 +567,8 @@ class _InvoicesScreenState extends State<InvoicesScreen>
                   },
                   onDelete: () =>
                       _deletePurchaseInvoice(_paginatedPurchases[i]),
+                  onDownload: () =>
+                      _downloadPurchasePdf(_paginatedPurchases[i]),
                 ),
               ),
             ),
@@ -668,6 +674,93 @@ class _InvoicesScreenState extends State<InvoicesScreen>
     );
   }
 
+  Future<void> _downloadSalePdf(Map<String, dynamic> invoice) async {
+    try {
+      final lines = await _invoiceService.fetchInvoiceLines(
+        invoice['id'] as String,
+      );
+      final client = invoice['client'] as Map<String, dynamic>?;
+      final clientName = client?['full_name'] as String? ?? 'Cliente';
+      final number = invoice['number'] as String? ?? '';
+      final date =
+          DateTime.tryParse(invoice['issued_at'] as String? ?? '') ??
+          DateTime.now();
+      final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0.0;
+      final tax = (invoice['tax_amount'] as num?)?.toDouble() ?? 0.0;
+      final total = (invoice['total'] as num?)?.toDouble() ?? 0.0;
+
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(44),
+          build: (_) => _buildSalePdfPage(
+            number: number,
+            date: date,
+            recipientLabel: 'CLIENTE',
+            recipientName: clientName,
+            lines: lines,
+            subtotal: subtotal,
+            tax: tax,
+            total: total,
+            type: 'FACTURA DE VENTA',
+          ),
+        ),
+      );
+      await Printing.layoutPdf(
+        onLayout: (_) async => doc.save(),
+        name: 'Factura_$number.pdf',
+      );
+    } catch (e) {
+      if (mounted) _showError('Error al generar PDF: $e');
+    }
+  }
+
+  Future<void> _downloadPurchasePdf(Map<String, dynamic> invoice) async {
+    try {
+      final linesData = await SupabaseService.client
+          .from('purchase_invoice_lines')
+          .select()
+          .eq('purchase_invoice_id', invoice['id'])
+          .order('created_at');
+      final lines = List<Map<String, dynamic>>.from(linesData);
+      final supplier =
+          invoice['supplier_name'] as String? ?? 'Proveedor';
+      final number = invoice['number'] as String? ?? '';
+      final date =
+          DateTime.tryParse(invoice['issued_at'] as String? ?? '') ??
+          DateTime.now();
+      final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0.0;
+      final tax = (invoice['tax_amount'] as num?)?.toDouble() ?? 0.0;
+      final total = (invoice['total'] as num?)?.toDouble() ?? 0.0;
+
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(44),
+          build: (_) => _buildSalePdfPage(
+            number: number,
+            date: date,
+            recipientLabel: 'PROVEEDOR',
+            recipientName: supplier,
+            lines: lines,
+            subtotal: subtotal,
+            tax: tax,
+            total: total,
+            type: 'FACTURA DE COMPRA',
+          ),
+        ),
+      );
+      await Printing.layoutPdf(
+        onLayout: (_) async => doc.save(),
+        name: 'Compra_$number.pdf',
+      );
+    } catch (e) {
+      if (mounted) _showError('Error al generar PDF: $e');
+    }
+  }
+
   void _openCreateSale() async {
     final result = await showDialog<bool>(
       context: context,
@@ -710,6 +803,207 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       ),
     );
   }
+}
+
+// ── PDF HELPERS ───────────────────────────────────────────
+
+pw.Widget _buildSalePdfPage({
+  required String number,
+  required DateTime date,
+  required String recipientLabel,
+  required String recipientName,
+  required List<Map<String, dynamic>> lines,
+  required double subtotal,
+  required double tax,
+  required double total,
+  required String type,
+}) {
+  final dateStr = '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/'
+      '${date.year}';
+
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      // Header
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Business Flow',
+                style: pw.TextStyle(
+                  fontSize: 22,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blue800,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Sistema de Gestión Empresarial',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                type,
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey800,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                number,
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Fecha: $dateStr',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      pw.SizedBox(height: 16),
+      pw.Divider(color: PdfColors.blue200, thickness: 1.5),
+      pw.SizedBox(height: 16),
+      // Recipient
+      pw.Text(
+        recipientLabel,
+        style: pw.TextStyle(
+          fontSize: 9,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.grey600,
+          letterSpacing: 1.2,
+        ),
+      ),
+      pw.SizedBox(height: 4),
+      pw.Text(
+        recipientName,
+        style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+      ),
+      pw.SizedBox(height: 20),
+      // Lines header
+      pw.Text(
+        'CONCEPTOS',
+        style: pw.TextStyle(
+          fontSize: 9,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.grey600,
+          letterSpacing: 1.2,
+        ),
+      ),
+      pw.SizedBox(height: 6),
+      pw.Table(
+        border: pw.TableBorder(
+          horizontalInside: const pw.BorderSide(
+            width: 0.5,
+            color: PdfColors.grey300,
+          ),
+        ),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(5),
+          1: const pw.FixedColumnWidth(50),
+          2: const pw.FixedColumnWidth(80),
+          3: const pw.FixedColumnWidth(80),
+        },
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.blue50),
+            children: [
+              _pdfCell('Descripción', bold: true),
+              _pdfCell('Cant.', bold: true),
+              _pdfCell('P. unitario', bold: true),
+              _pdfCell('Total', bold: true),
+            ],
+          ),
+          ...lines.map((l) {
+            final qty = (l['quantity'] as num).toDouble();
+            final unitPrice = (l['unit_price'] as num).toDouble();
+            final lineTotal = (l['total'] as num).toDouble();
+            return pw.TableRow(
+              children: [
+                _pdfCell(l['description'] as String? ?? ''),
+                _pdfCell(qty.toStringAsFixed(0)),
+                _pdfCell('${unitPrice.toStringAsFixed(2)} €'),
+                _pdfCell('${lineTotal.toStringAsFixed(2)} €'),
+              ],
+            );
+          }),
+        ],
+      ),
+      pw.SizedBox(height: 20),
+      // Totals aligned right
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.SizedBox(
+          width: 220,
+          child: pw.Column(
+            children: [
+              _pdfTotalRow('Subtotal', subtotal),
+              pw.SizedBox(height: 4),
+              _pdfTotalRow('IVA', tax),
+              pw.SizedBox(height: 4),
+              pw.Divider(color: PdfColors.grey400),
+              pw.SizedBox(height: 4),
+              _pdfTotalRow('TOTAL', total, bold: true),
+            ],
+          ),
+        ),
+      ),
+      pw.Spacer(),
+      pw.Divider(color: PdfColors.grey300),
+      pw.SizedBox(height: 4),
+      pw.Text(
+        'Documento generado por Business Flow · ${DateTime.now().year}',
+        style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
+        textAlign: pw.TextAlign.center,
+      ),
+    ],
+  );
+}
+
+pw.Widget _pdfCell(String text, {bool bold = false}) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+    child: pw.Text(
+      text,
+      style: bold
+          ? pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)
+          : const pw.TextStyle(fontSize: 10),
+    ),
+  );
+}
+
+pw.Widget _pdfTotalRow(String label, double value, {bool bold = false}) {
+  final style = bold
+      ? pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)
+      : const pw.TextStyle(fontSize: 11, color: PdfColors.grey700);
+  return pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+      pw.Text(label, style: style),
+      pw.Text('${value.toStringAsFixed(2)} €', style: style),
+    ],
+  );
 }
 
 // ── FILTRO FECHAS ─────────────────────────────────────────
@@ -790,12 +1084,14 @@ class _SaleInvoiceCard extends StatelessWidget {
   final VoidCallback onTap;
   final void Function(String) onStatusChange;
   final VoidCallback onDelete;
+  final VoidCallback onDownload;
 
   const _SaleInvoiceCard({
     required this.invoice,
     required this.onTap,
     required this.onStatusChange,
     required this.onDelete,
+    required this.onDownload,
   });
 
   @override
@@ -875,13 +1171,27 @@ class _SaleInvoiceCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   _StatusBadge(status: status),
                   const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: onDelete,
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Color(0xFFDC2626),
-                      size: 18,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: onDownload,
+                        child: const Icon(
+                          Icons.download_outlined,
+                          color: Color(0xFF1D6FEB),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: onDelete,
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFDC2626),
+                          size: 18,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -900,12 +1210,14 @@ class _PurchaseInvoiceCard extends StatelessWidget {
   final VoidCallback onTap;
   final void Function(String) onStatusChange;
   final VoidCallback onDelete;
+  final VoidCallback onDownload;
 
   const _PurchaseInvoiceCard({
     required this.invoice,
     required this.onTap,
     required this.onStatusChange,
     required this.onDelete,
+    required this.onDownload,
   });
 
   @override
@@ -994,13 +1306,27 @@ class _PurchaseInvoiceCard extends StatelessWidget {
                       ),
                     ),
                   if (status == 'pending') const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: onDelete,
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Color(0xFFDC2626),
-                      size: 18,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: onDownload,
+                        child: const Icon(
+                          Icons.download_outlined,
+                          color: Color(0xFF1D6FEB),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: onDelete,
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFDC2626),
+                          size: 18,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

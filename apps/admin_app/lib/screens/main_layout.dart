@@ -5,6 +5,7 @@ import 'dashboard_screen.dart';
 import 'bookings_screen.dart';
 import 'inventory_screen.dart';
 import 'invoices_screen.dart';
+import 'services_screen.dart';
 import 'profile_screen.dart';
 
 class MainLayout extends StatefulWidget {
@@ -32,6 +33,7 @@ class _MainLayoutState extends State<MainLayout> {
         _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
         _NavItem(icon: Icons.calendar_month, label: 'Reservas'),
         _NavItem(icon: Icons.inventory_2, label: 'Inventario'),
+        _NavItem(icon: Icons.design_services_outlined, label: 'Servicios'),
         _NavItem(icon: Icons.receipt_long, label: 'Facturas'),
         _NavItem(icon: Icons.person_outline, label: 'Perfil'),
       ];
@@ -39,6 +41,7 @@ class _MainLayoutState extends State<MainLayout> {
         DashboardScreen(profile: widget.profile),
         BookingsScreen(profile: widget.profile),
         const InventoryScreen(),
+        ServicesScreen(profile: widget.profile),
         InvoicesScreen(profile: widget.profile),
         ProfileScreen(profile: widget.profile),
       ];
