@@ -101,8 +101,9 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    if (parts.isNotEmpty && parts[0].isNotEmpty)
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
       return parts[0][0].toUpperCase();
+    }
     return '?';
   }
 
@@ -1133,11 +1134,12 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     try {
       final email = widget.employee['email'] as String? ?? '';
       await SupabaseService.client.auth.resetPasswordForEmail(email);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _sent = true;
           _loading = false;
         });
+      }
     } catch (_) {
       if (mounted) {
         setState(() {

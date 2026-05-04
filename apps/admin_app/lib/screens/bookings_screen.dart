@@ -1079,6 +1079,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
   }) {
     final status = b['status'] as String? ?? '';
     final id = b['id'] as String;
+    
+    final startAt = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+    final isPast = startAt != null && startAt.isBefore(DateTime.now());
 
     if (status == 'completed' || status == 'cancelled') {
       return const SizedBox.shrink();
@@ -1094,7 +1097,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
               value: 'confirm',
               child: Text('Confirmar', style: TextStyle(fontSize: 13)),
             ),
-          if (status == 'confirmed')
+          if (status == 'confirmed' && isPast)
             const PopupMenuItem(
               value: 'complete',
               child: Text('Finalizar y cobrar', style: TextStyle(fontSize: 13)),
@@ -1145,7 +1148,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
             ),
             child: const Text('Confirmar', style: TextStyle(fontSize: 12)),
           ),
-        if (status == 'confirmed')
+        if (status == 'confirmed' && isPast)
           TextButton(
             onPressed: () => _openFinalizeDialog(b),
             style: TextButton.styleFrom(

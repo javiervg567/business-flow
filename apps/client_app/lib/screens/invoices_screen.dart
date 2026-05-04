@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class ClientInvoicesScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -294,6 +297,98 @@ class _InvoiceDetailSheet extends StatelessWidget {
   final List<Map<String, dynamic>> lines;
   const _InvoiceDetailSheet({required this.invoice, required this.lines});
 
+  Future<void> _generatePdf(BuildContext context) async {
+    final pdf = pw.Document();
+    
+    final number = invoice['number'] as String? ?? '—';
+    final issuedAt = DateTime.tryParse(invoice['issued_at'] ?? '')?.toLocal();
+    final dateStr = issuedAt != null
+        ? '${issuedAt.day.toString().padLeft(2, '0')}/${issuedAt.month.toString().padLeft(2, '0')}/${issuedAt.year}'
+        : '—';
+    final subtotal = invoice['subtotal'] as num? ?? 0;
+    final taxAmount = invoice['tax_amount'] as num? ?? 0;
+    final total = invoice['total'] as num? ?? 0;
+    
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Factura', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Business Flow', style: pw.TextStyle(fontSize: 20, color: PdfColors.green)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Nº Factura: $number', style: const pw.TextStyle(fontSize: 14)),
+                    pw.Text('Fecha: $dateStr', style: const pw.TextStyle(fontSize: 14)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+            pw.Table.fromTextArray(
+              context: context,
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              headerHeight: 30,
+              cellHeight: 30,
+              cellAlignments: {
+                0: pw.Alignment.centerLeft,
+                1: pw.Alignment.centerRight,
+                2: pw.Alignment.centerRight,
+                3: pw.Alignment.centerRight,
+              },
+              headers: ['Descripción', 'Cant.', 'Precio ud.', 'Total'],
+              data: [
+                ...lines.map((line) {
+                  final desc = line['description'] as String? ?? '';
+                  final qty = line['quantity'] as num? ?? 1;
+                  final unitPrice = line['unit_price'] as num? ?? 0;
+                  final lineTotal = qty * unitPrice;
+                  return [
+                    desc,
+                    qty.toStringAsFixed(0),
+                    '${unitPrice.toStringAsFixed(2)} EUR',
+                    '${lineTotal.toStringAsFixed(2)} EUR',
+                  ];
+                }),
+              ],
+            ),
+            pw.SizedBox(height: 20),
+            pw.Container(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('Subtotal: ${subtotal.toStringAsFixed(2)} EUR', style: const pw.TextStyle(fontSize: 14)),
+                  pw.Text('IVA: ${taxAmount.toStringAsFixed(2)} EUR', style: const pw.TextStyle(fontSize: 14)),
+                  pw.Divider(),
+                  pw.Text('Total: ${total.toStringAsFixed(2)} EUR', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Factura_$number.pdf',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final number = invoice['number'] as String? ?? '—';
@@ -515,29 +610,21 @@ class _InvoiceDetailSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                      Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () {
                         if (pdfUrl != null && pdfUrl.isNotEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                'Abriendo PDF...',
+                                'Abriendo PDF de la nube...',
                                 style: GoogleFonts.dmSans(),
                               ),
                               backgroundColor: const Color(0xFF16A34A),
                             ),
                           );
                         } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'PDF no disponible para esta factura',
-                                style: GoogleFonts.dmSans(),
-                              ),
-                              backgroundColor: const Color(0xFF64748B),
-                            ),
-                          );
+                          _generatePdf(context);
                         }
                       },
                       icon: const Icon(Icons.download_outlined, size: 16),
