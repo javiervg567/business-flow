@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'main_layout.dart';
+import 'logo_mark.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,25 +39,25 @@ class _LoginScreenState extends State<LoginScreen>
       parent: _entranceCtrl,
       curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
     );
-    _panelSlide = Tween<Offset>(
-      begin: const Offset(-0.05, 0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
-    ));
+    _panelSlide = Tween<Offset>(begin: const Offset(-0.05, 0), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
+          ),
+        );
 
     _formFade = CurvedAnimation(
       parent: _entranceCtrl,
       curve: const Interval(0.35, 1.0, curve: Curves.easeOut),
     );
-    _formSlide = Tween<Offset>(
-      begin: const Offset(0, 0.07),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.35, 1.0, curve: Curves.easeOut),
-    ));
+    _formSlide = Tween<Offset>(begin: const Offset(0, 0.07), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.35, 1.0, curve: Curves.easeOut),
+          ),
+        );
 
     _entranceCtrl.forward();
   }
@@ -172,10 +173,7 @@ class _LoginScreenState extends State<LoginScreen>
               padding: const EdgeInsets.fromLTRB(28, 36, 28, 32),
               child: SlideTransition(
                 position: _formSlide,
-                child: FadeTransition(
-                  opacity: _formFade,
-                  child: _buildForm(),
-                ),
+                child: FadeTransition(opacity: _formFade, child: _buildForm()),
               ),
             ),
           ),
@@ -242,22 +240,24 @@ class _LoginScreenState extends State<LoginScreen>
                   fontSize: 15,
                   color: const Color(0xFF0D1B2E),
                 ),
-                decoration: _fieldDecoration(
-                  '••••••••',
-                  isFocused: _passwordFocused,
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: const Color(0xFF9CA3AF),
-                      size: 20,
+                decoration:
+                    _fieldDecoration(
+                      '••••••••',
+                      isFocused: _passwordFocused,
+                    ).copyWith(
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: const Color(0xFF9CA3AF),
+                          size: 20,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                      ),
                     ),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                ),
                 onSubmitted: (_) => _handleLogin(),
               ),
             ),
@@ -308,10 +308,8 @@ class _LoginScreenState extends State<LoginScreen>
         fontSize: 15,
       ),
       filled: true,
-      fillColor:
-          isFocused ? const Color(0xFFF0F6FF) : const Color(0xFFF8FAFC),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      fillColor: isFocused ? const Color(0xFFF0F6FF) : const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -322,14 +320,11 @@ class _LoginScreenState extends State<LoginScreen>
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide:
-            const BorderSide(color: Color(0xFF1D6FEB), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF1D6FEB), width: 1.5),
       ),
     );
   }
 }
-
-// ─── Left panel ──────────────────────────────────────────────────────────────
 
 class _LeftPanel extends StatelessWidget {
   const _LeftPanel();
@@ -340,9 +335,7 @@ class _LeftPanel extends StatelessWidget {
       color: const Color(0xFF0D1B2E),
       child: Stack(
         children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _BlueprintPainter()),
-          ),
+          Positioned.fill(child: CustomPaint(painter: _BlueprintPainter())),
           Padding(
             padding: const EdgeInsets.all(52),
             child: Column(
@@ -397,30 +390,9 @@ class _LeftPanel extends StatelessWidget {
 class _LogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1D6FEB),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1D6FEB).withValues(alpha:0.4),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.grid_view_rounded,
-        color: Colors.white,
-        size: 26,
-      ),
-    );
+    return const BarsLogoMark(size: 52, borderRadius: 12);
   }
 }
-
-// ─── Mobile header ────────────────────────────────────────────────────────────
 
 class _MobileHeader extends StatelessWidget {
   const _MobileHeader();
@@ -438,26 +410,7 @@ class _MobileHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1D6FEB),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF1D6FEB).withValues(alpha:0.35),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.grid_view_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
+          const BarsLogoMark(size: 44, borderRadius: 10),
           const SizedBox(width: 14),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,8 +437,6 @@ class _MobileHeader extends StatelessWidget {
   }
 }
 
-// ─── Login button ─────────────────────────────────────────────────────────────
-
 class _LoginButton extends StatefulWidget {
   const _LoginButton({required this.loading, required this.onPressed});
   final bool loading;
@@ -508,9 +459,10 @@ class _LoginButtonState extends State<_LoginButton>
       duration: const Duration(milliseconds: 90),
       reverseDuration: const Duration(milliseconds: 180),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.97).animate(
-      CurvedAnimation(parent: _pressCtrl, curve: Curves.easeInOut),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.97,
+    ).animate(CurvedAnimation(parent: _pressCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -542,7 +494,7 @@ class _LoginButtonState extends State<_LoginButton>
             borderRadius: BorderRadius.circular(10),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1D6FEB).withValues(alpha:0.38),
+                color: const Color(0xFF1D6FEB).withValues(alpha: 0.38),
                 blurRadius: 18,
                 offset: const Offset(0, 7),
               ),
@@ -573,8 +525,6 @@ class _LoginButtonState extends State<_LoginButton>
     );
   }
 }
-
-// ─── Error banner ─────────────────────────────────────────────────────────────
 
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});
@@ -616,13 +566,11 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-// ─── Background geometric painter ────────────────────────────────────────────
-
 class _BlueprintPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final gridPaint = Paint()
-      ..color = const Color(0xFF1A2F4A).withValues(alpha:0.45)
+      ..color = const Color(0xFF1A2F4A).withValues(alpha: 0.45)
       ..strokeWidth = 0.8
       ..style = PaintingStyle.stroke;
 
@@ -635,10 +583,10 @@ class _BlueprintPainter extends CustomPainter {
     }
 
     final glowFill = Paint()
-      ..color = const Color(0xFF1D6FEB).withValues(alpha:0.07)
+      ..color = const Color(0xFF1D6FEB).withValues(alpha: 0.07)
       ..style = PaintingStyle.fill;
     final glowStroke = Paint()
-      ..color = const Color(0xFF1D6FEB).withValues(alpha:0.10)
+      ..color = const Color(0xFF1D6FEB).withValues(alpha: 0.10)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
 
@@ -655,7 +603,7 @@ class _BlueprintPainter extends CustomPainter {
     canvas.drawCircle(Offset(cx2, cy2), 90, glowStroke);
 
     final diagPaint = Paint()
-      ..color = const Color(0xFF1D6FEB).withValues(alpha:0.13)
+      ..color = const Color(0xFF1D6FEB).withValues(alpha: 0.13)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
 

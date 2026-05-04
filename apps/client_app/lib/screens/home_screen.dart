@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'bookings_screen.dart';
+import 'invoices_screen.dart';
 import 'profile_screen.dart';
 import 'business_selection_screen.dart';
 
@@ -26,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _screens = [
       ClientHomeTab(profile: widget.profile),
       ClientBookingsScreen(profile: widget.profile),
+      ClientInvoicesScreen(profile: widget.profile),
       _BusinessesTab(profile: widget.profile),
       ClientProfileScreen(profile: widget.profile),
     ];
@@ -39,7 +42,10 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        indicatorColor: const Color(0xFF16A34A).withValues(alpha: 0.1),
+        backgroundColor: Colors.white,
+        indicatorColor: const Color(0xFF16A34A).withValues(alpha: 0.12),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -50,6 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.calendar_month_outlined),
             selectedIcon: Icon(Icons.calendar_month, color: Color(0xFF16A34A)),
             label: 'Mis citas',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long, color: Color(0xFF16A34A)),
+            label: 'Facturas',
           ),
           NavigationDestination(
             icon: Icon(Icons.store_outlined),
@@ -67,8 +78,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ==================== HOME TAB ====================
-
 class ClientHomeTab extends StatefulWidget {
   final Map<String, dynamic> profile;
   const ClientHomeTab({super.key, required this.profile});
@@ -82,6 +91,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
   Map<String, dynamic>? _nextBooking;
   Map<String, dynamic>? _business;
   List<Map<String, dynamic>> _services = [];
+  bool _soonAlert = false;
 
   @override
   void initState() {
@@ -125,10 +135,20 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       final businesses = (results[1] as List).cast<Map<String, dynamic>>();
       final services = (results[2] as List).cast<Map<String, dynamic>>();
 
+      bool soonAlert = false;
+      if (bookings.isNotEmpty) {
+        final startAt = DateTime.tryParse(bookings.first['start_at'] ?? '');
+        if (startAt != null) {
+          final diff = startAt.toUtc().difference(DateTime.now().toUtc());
+          soonAlert = diff.inMinutes >= 0 && diff.inHours <= 24;
+        }
+      }
+
       setState(() {
         _nextBooking = bookings.isNotEmpty ? bookings.first : null;
         _business = businesses.isNotEmpty ? businesses.first : null;
         _services = services;
+        _soonAlert = soonAlert;
         _loading = false;
       });
     } catch (e) {
@@ -139,7 +159,11 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF16A34A)),
+      );
+    }
 
     final firstName =
         widget.profile['full_name']?.toString().split(' ').first ?? '';
@@ -149,288 +173,304 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         : hour < 20
         ? 'Buenas tardes'
         : 'Buenas noches';
+    final initials = _getInitials(widget.profile['full_name'] ?? '');
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$greeting,',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(color: Color(0xFF0D1B2E)),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: CustomPaint(painter: _HomeGridPainter())),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$greeting,',
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 13,
+                                  color: const Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                firstName,
+                                style: GoogleFonts.dmSerifDisplay(
+                                  fontSize: 28,
+                                  color: Colors.white,
+                                  height: 1.1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Text(
-                        firstName,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16A34A),
+                            borderRadius: BorderRadius.circular(11),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF16A34A).withValues(alpha: 0.35),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              initials,
+                              style: GoogleFonts.dmSerifDisplay(
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: const Color(0xFF16A34A),
-                  child: Text(
-                    firstName.isNotEmpty ? firstName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
 
-            // Banner negocio
-            if (_business != null) ...[
+            if (_soonAlert && _nextBooking != null) ...[
               Container(
-                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF16A34A), Color(0xFF15803D)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(9),
                       ),
                       child: const Icon(
-                        Icons.store_outlined,
-                        color: Colors.white,
-                        size: 22,
+                        Icons.notifications_outlined,
+                        size: 18,
+                        color: Color(0xFFD97706),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _business!['name'] ?? 'Tu negocio',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                            'Recordatorio de cita',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF92400E),
                             ),
                           ),
-                          if (_business!['address'] != null)
-                            Text(
-                              _business!['address'],
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.85),
-                                fontSize: 12,
+                          Text(
+                            'Tienes una cita en las próximas 24 horas',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              color: const Color(0xFFB45309),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_business != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF16A34A), Color(0xFF15803D)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF16A34A).withValues(alpha: 0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.store_outlined,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _business!['name'] ?? 'Tu negocio',
+                                  style: GoogleFonts.dmSans(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (_business!['address'] != null)
+                                  Text(
+                                    _business!['address'],
+                                    style: GoogleFonts.dmSans(
+                                      color: Colors.white.withValues(alpha: 0.80),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => context
+                                .findAncestorStateOfType<_HomeScreenState>()
+                                ?.navigateTo(3),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
                               ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Cambiar',
+                                style: GoogleFonts.dmSans(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  const _SectionLabel('Próxima cita'),
+                  const SizedBox(height: 10),
+                  if (_nextBooking == null)
+                    _EmptyBookingCard(
+                      onBook: () => context
+                          .findAncestorStateOfType<_HomeScreenState>()
+                          ?.navigateTo(1),
+                    )
+                  else
+                    _buildNextBookingCard(_nextBooking!),
+
+                  const SizedBox(height: 28),
+
+                  Row(
+                    children: [
+                      const Expanded(child: _SectionLabel('Nuestros servicios')),
+                      if (_services.isNotEmpty)
+                        Text(
+                          '${_services.length} disponibles',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (_services.isEmpty)
+                    _emptyCard('No hay servicios disponibles')
+                  else
+                    ListView.separated(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      itemCount: _services.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) => _ServiceCard(service: _services[i]),
+                    ),
+
+                  const SizedBox(height: 28),
+
+                  if (_business != null) ...[
+                    const _SectionLabel('Tu negocio'),
+                    const SizedBox(height: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _businessInfoRow(
+                            Icons.store_outlined,
+                            _business!['name'] ?? 'Negocio',
+                            isLast: _business!['address'] == null && _business!['phone'] == null,
+                          ),
+                          if (_business!['address'] != null)
+                            _businessInfoRow(
+                              Icons.location_on_outlined,
+                              _business!['address'],
+                              isLast: _business!['phone'] == null,
+                            ),
+                          if (_business!['phone'] != null)
+                            _businessInfoRow(
+                              Icons.phone_outlined,
+                              _business!['phone'],
+                              isLast: true,
                             ),
                         ],
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () => context
-                          .findAncestorStateOfType<_HomeScreenState>()
-                          ?.navigateTo(2),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Cambiar',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
 
-            // Próxima cita
-            const Text(
-              'PRÓXIMA CITA',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-                letterSpacing: 0.5,
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            if (_nextBooking == null)
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F2)),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today_outlined,
-                      size: 36,
-                      color: Color(0xFFCBD5E1),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'No tienes citas próximas',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Reserva tu próxima visita',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () => context
-                          .findAncestorStateOfType<_HomeScreenState>()
-                          ?.navigateTo(1),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Pedir cita'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16A34A),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              _buildNextBookingCard(_nextBooking!),
-
-            const SizedBox(height: 28),
-
-            // ── NUESTROS SERVICIOS ──────────────────────────────
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'NUESTROS SERVICIOS',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                if (_services.isNotEmpty)
-                  Text(
-                    '${_services.length} disponibles',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            if (_services.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F2)),
-                ),
-                child: const Center(
-                  child: Text(
-                    'No hay servicios disponibles',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                  ),
-                ),
-              )
-            else
-              ListView.separated(
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                itemCount: _services.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (_, i) => _ServiceCard(service: _services[i]),
-              ),
-
-            const SizedBox(height: 20),
-
-            // Info del negocio
-            if (_business != null) ...[
-              const Text(
-                'TU NEGOCIO',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F2)),
-                ),
-                child: Column(
-                  children: [
-                    _businessRow(
-                      Icons.store_outlined,
-                      _business!['name'] ?? 'Negocio',
-                    ),
-                    if (_business!['address'] != null)
-                      _businessRow(
-                        Icons.location_on_outlined,
-                        _business!['address'],
-                      ),
-                    if (_business!['phone'] != null)
-                      _businessRow(Icons.phone_outlined, _business!['phone']),
-                    _businessRow(
-                      Icons.schedule_outlined,
-                      'Lun–Sáb · 9:00 – 20:00',
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -469,11 +509,18 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     };
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F2)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -481,17 +528,14 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: statusConfig.bg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   statusConfig.label,
-                  style: TextStyle(
+                  style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: statusConfig.color,
@@ -499,58 +543,58 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                 ),
               ),
               const Spacer(),
-              const Icon(
-                Icons.calendar_today,
-                size: 14,
-                color: Color(0xFF94A3B8),
-              ),
+              const Icon(Icons.calendar_today, size: 13, color: Color(0xFF94A3B8)),
               const SizedBox(width: 4),
               Text(
                 dateStr,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF64748B)),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Text(
             service?['name'] ?? 'Servicio',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            style: GoogleFonts.dmSerifDisplay(
+              fontSize: 20,
+              color: const Color(0xFF0D1B2E),
+              height: 1.1,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Row(
             children: [
               const Icon(Icons.access_time, size: 14, color: Color(0xFF94A3B8)),
               const SizedBox(width: 4),
               Text(
                 timeStr,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF64748B)),
               ),
               if (employee != null) ...[
-                const SizedBox(width: 12),
-                const Icon(
-                  Icons.person_outline,
-                  size: 14,
-                  color: Color(0xFF94A3B8),
-                ),
+                const SizedBox(width: 14),
+                const Icon(Icons.person_outline, size: 14, color: Color(0xFF94A3B8)),
                 const SizedBox(width: 4),
                 Text(
                   employee['full_name'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF64748B),
-                  ),
+                  style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF64748B)),
                 ),
               ],
             ],
           ),
           if (service?['price'] != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              '${(service['price'] as num).toStringAsFixed(2)} €',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF16A34A),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${(service['price'] as num).toStringAsFixed(2)} €',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF16A34A),
+                ),
               ),
             ),
           ],
@@ -559,22 +603,59 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     );
   }
 
-  Widget _businessRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+  Widget _businessInfoRow(IconData icon, String text, {required bool isLast}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF16A34A)),
-          const SizedBox(width: 10),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: const Color(0xFF16A34A)),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+              style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF0D1B2E)),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _emptyCard(String text) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Center(
+        child: Text(
+          text,
+          style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF94A3B8)),
+        ),
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    if (parts.isNotEmpty && parts[0].isNotEmpty) return parts[0][0].toUpperCase();
+    return '?';
   }
 
   String _weekday(int w) {
@@ -584,24 +665,88 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
 
   String _month(int m) {
     const months = [
-      'enero',
-      'febrero',
-      'marzo',
-      'abril',
-      'mayo',
-      'junio',
-      'julio',
-      'agosto',
-      'septiembre',
-      'octubre',
-      'noviembre',
-      'diciembre',
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
     ];
     return months[m - 1];
   }
 }
 
-// ── TARJETA DE SERVICIO ────────────────────────────────────────────────────────
+class _EmptyBookingCard extends StatelessWidget {
+  final VoidCallback onBook;
+  const _EmptyBookingCard({required this.onBook});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.calendar_today_outlined,
+              size: 24,
+              color: Color(0xFF86EFAC),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No tienes citas próximas',
+            style: GoogleFonts.dmSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Reserva tu próxima visita',
+            style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF94A3B8)),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onBook,
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(
+                'Pedir cita',
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ServiceCard extends StatelessWidget {
   final Map<String, dynamic> service;
@@ -618,17 +763,23 @@ class _ServiceCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F2)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Imagen
           ClipRRect(
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(12),
-              bottomLeft: Radius.circular(12),
+              topLeft: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
             ),
             child: SizedBox(
               width: 90,
@@ -642,7 +793,6 @@ class _ServiceCard extends StatelessWidget {
                   : _placeholder(),
             ),
           ),
-          // Info
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -651,21 +801,21 @@ class _ServiceCard extends StatelessWidget {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
+                    style: GoogleFonts.dmSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                      color: const Color(0xFF0D1B2E),
                     ),
                   ),
                   if (description != null && description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: GoogleFonts.dmSans(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: const Color(0xFF64748B),
                         height: 1.4,
                       ),
                     ),
@@ -682,9 +832,9 @@ class _ServiceCard extends StatelessWidget {
                         const SizedBox(width: 3),
                         Text(
                           '$duration min',
-                          style: const TextStyle(
+                          style: GoogleFonts.dmSans(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: const Color(0xFF64748B),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -701,10 +851,10 @@ class _ServiceCard extends StatelessWidget {
                           ),
                           child: Text(
                             '${(price as num).toStringAsFixed(2)} €',
-                            style: const TextStyle(
+                            style: GoogleFonts.dmSans(
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF16A34A),
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF16A34A),
                             ),
                           ),
                         ),
@@ -727,8 +877,6 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-// ==================== NEGOCIOS TAB ====================
-
 class _BusinessesTab extends StatelessWidget {
   final Map<String, dynamic> profile;
   const _BusinessesTab({required this.profile});
@@ -737,58 +885,134 @@ class _BusinessesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Icon(
+                  Icons.store_outlined,
+                  size: 30,
+                  color: Color(0xFF16A34A),
+                ),
               ),
-              child: const Icon(
-                Icons.store_outlined,
-                size: 32,
-                color: Color(0xFF16A34A),
+              const SizedBox(height: 16),
+              Text(
+                'Mis negocios',
+                style: GoogleFonts.dmSerifDisplay(
+                  fontSize: 22,
+                  color: const Color(0xFF0D1B2E),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Mis negocios',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Cambia entre tus negocios favoritos',
-              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (_) => BusinessSelectionScreen(profile: profile),
+              const SizedBox(height: 6),
+              Text(
+                'Cambia entre tus negocios favoritos',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => BusinessSelectionScreen(profile: profile),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  label: Text(
+                    'Ver y cambiar negocio',
+                    style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
                   ),
-                );
-              },
-              icon: const Icon(Icons.swap_horiz, size: 18),
-              label: const Text('Ver y cambiar negocio'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF16A34A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF16A34A),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 14,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16A34A),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.dmSans(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF374151),
+            letterSpacing: 0.9,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1A2F4A).withValues(alpha: 0.45)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+
+    const spacing = 48.0;
+    for (double x = 0; x < size.width + spacing; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height + spacing; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFF16A34A).withValues(alpha: 0.08)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.88, size.height * 0.20),
+      80,
+      glowPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

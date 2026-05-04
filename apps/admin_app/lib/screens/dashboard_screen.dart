@@ -23,8 +23,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   double _monthProfit = 0;
   List<Map<String, dynamic>> _upcomingBookings = [];
   List<Map<String, dynamic>> _nextBookings = [];
+  int _completedThisMonth = 0;
   List<Map<String, dynamic>> _lowStockProducts = [];
   List<Map<String, dynamic>> _notifications = [];
+  double _reviewAvg = 0;
+  int _reviewCount = 0;
+  List<Map<String, dynamic>> _recentReviews = [];
+
+  DateTime _empCalendarMonth = DateTime.now();
+  DateTime? _empSelectedDay;
+  Map<String, List<Map<String, dynamic>>> _empBookingsByDay = {};
+  List<Map<String, dynamic>> _empSelectedDayBookings = [];
 
   DateTime _calendarMonth = DateTime.now();
   DateTime _filterMonth = DateTime.now();
@@ -89,13 +98,45 @@ class _DashboardScreenState extends State<DashboardScreen>
               .neq('status', 'cancelled')
               .order('start_at')
               .limit(5),
+          client
+              .from('bookings')
+              .select('id')
+              .eq('business_id', businessId)
+              .eq('employee_id', employeeId)
+              .eq('status', 'completed')
+              .gte('start_at', monthStart.toIso8601String())
+              .lt('start_at', monthEnd.toIso8601String()),
+          client
+              .from('bookings')
+              .select(
+                '*, client:profiles!bookings_client_id_fkey(full_name), service:services(name)',
+              )
+              .eq('business_id', businessId)
+              .eq('employee_id', employeeId)
+              .gte('start_at', monthStart.toIso8601String())
+              .lt('start_at', monthEnd.toIso8601String())
+              .neq('status', 'cancelled')
+              .order('start_at'),
         ]);
+
+        final calBookings = (results[3] as List).cast<Map<String, dynamic>>();
+        final Map<String, List<Map<String, dynamic>>> byDay = {};
+        for (final b in calBookings) {
+          final d = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+          if (d != null) {
+            final key =
+                '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+            byDay.putIfAbsent(key, () => []).add(b);
+          }
+        }
 
         if (!mounted) return;
         setState(() {
           _upcomingBookings = (results[0] as List).cast<Map<String, dynamic>>();
           _todayBookings = _upcomingBookings.length;
           _nextBookings = (results[1] as List).cast<Map<String, dynamic>>();
+          _completedThisMonth = (results[2] as List).length;
+          _empBookingsByDay = byDay;
           _loading = false;
         });
         _fadeCtrl.forward();
@@ -162,6 +203,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             .eq('business_id', businessId)
             .eq('read', false)
             .order('created_at', ascending: false),
+        client
+            .from('reviews')
+            .select(
+              'rating, comment, created_at, client:profiles!reviews_client_id_fkey(full_name)',
+            )
+            .eq('business_id', businessId)
+            .order('created_at', ascending: false),
       ]);
 
       final allProducts = (results[2] as List).cast<Map<String, dynamic>>();
@@ -203,6 +251,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         _monthProfit = monthSales - monthPurchases;
         _bookingsByDay = byDay;
         _notifications = (results[8] as List).cast<Map<String, dynamic>>();
+        final allReviews = (results[9] as List).cast<Map<String, dynamic>>();
+        _reviewCount = allReviews.length;
+        _reviewAvg = allReviews.isEmpty
+            ? 0
+            : allReviews.fold<int>(0, (s, r) => s + (r['rating'] as int)) /
+                  allReviews.length;
+        _recentReviews = allReviews.take(3).toList();
         _loading = false;
       });
       _fadeCtrl.forward();
@@ -211,6 +266,53 @@ class _DashboardScreenState extends State<DashboardScreen>
       setState(() => _loading = false);
       _fadeCtrl.forward();
     }
+  }
+
+  Future<void> _loadEmployeeCalendarMonth() async {
+    try {
+      final client = SupabaseService.client;
+      final businessId = widget.profile['business_id'];
+      final employeeId = widget.profile['id'];
+      final monthStart = DateTime(
+        _empCalendarMonth.year,
+        _empCalendarMonth.month,
+        1,
+      );
+      final monthEnd = DateTime(
+        _empCalendarMonth.year,
+        _empCalendarMonth.month + 1,
+        1,
+      );
+
+      final res = await client
+          .from('bookings')
+          .select(
+            '*, client:profiles!bookings_client_id_fkey(full_name), service:services(name)',
+          )
+          .eq('business_id', businessId)
+          .eq('employee_id', employeeId)
+          .gte('start_at', monthStart.toIso8601String())
+          .lt('start_at', monthEnd.toIso8601String())
+          .neq('status', 'cancelled')
+          .order('start_at');
+
+      final calBookings = (res as List).cast<Map<String, dynamic>>();
+      final Map<String, List<Map<String, dynamic>>> byDay = {};
+      for (final b in calBookings) {
+        final d = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+        if (d != null) {
+          final key =
+              '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+          byDay.putIfAbsent(key, () => []).add(b);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _empBookingsByDay = byDay;
+        _empSelectedDay = null;
+        _empSelectedDayBookings = [];
+      });
+    } catch (e) {}
   }
 
   Future<void> _loadCalendarMonth() async {
@@ -285,8 +387,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       ]);
       final sales = (results[0] as List).cast<Map<String, dynamic>>();
       final purchases = (results[1] as List).cast<Map<String, dynamic>>();
-      final monthSales = sales.fold<double>(0, (s, i) => s + (i['total'] as num).toDouble());
-      final monthPurchases = purchases.fold<double>(0, (s, i) => s + (i['total'] as num).toDouble());
+      final monthSales = sales.fold<double>(
+        0,
+        (s, i) => s + (i['total'] as num).toDouble(),
+      );
+      final monthPurchases = purchases.fold<double>(
+        0,
+        (s, i) => s + (i['total'] as num).toDouble(),
+      );
       if (!mounted) return;
       setState(() {
         _filterMonth = month;
@@ -309,8 +417,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       setState(() => _notifications.removeWhere((n) => n['id'] == id));
     } catch (_) {}
   }
-
-  // ─── BUILD ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -361,46 +467,833 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ─── EMPLOYEE DASHBOARD ──────────────────────────────────────────────────
-
   Widget _buildEmployeeDashboard() {
     final firstName =
         widget.profile['full_name']?.toString().split(' ').first ?? '';
+    final now = DateTime.now();
+
+    Map<String, dynamic>? nextBooking;
+    for (final b in _upcomingBookings) {
+      final start = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+      if (start != null && start.isAfter(now)) {
+        nextBooking = b;
+        break;
+      }
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDashboardHeader(firstName),
+          _buildEmployeeHeader(firstName),
+          const SizedBox(height: 20),
+          _buildEmployeeKpiRow(),
+          if (nextBooking != null) ...[
+            const SizedBox(height: 24),
+            _buildNextAppointmentCard(nextBooking),
+          ],
           const SizedBox(height: 24),
-          _DarkKpiCard(
-            icon: Icons.calendar_month_outlined,
-            label: 'Tus reservas hoy',
-            value: '$_todayBookings',
-            delta: 'citas asignadas',
-            deltaUp: true,
-            sparkData: const [0.3, 0.5, 0.4, 0.7, 0.5, 0.8, 1.0],
-            accentColor: const Color(0xFF1D6FEB),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionLabel('Reservas de hoy'),
+          _buildSectionLabel('Agenda de hoy'),
           const SizedBox(height: 12),
-          _buildBookingsCard(
-            _upcomingBookings,
-            emptyMessage: 'No tienes reservas hoy',
-          ),
+          _buildTodayTimeline(),
           if (_nextBookings.isNotEmpty) ...[
             const SizedBox(height: 24),
             _buildSectionLabel('Próximas reservas'),
             const SizedBox(height: 12),
             _buildBookingsCard(_nextBookings, showDate: true),
           ],
+          const SizedBox(height: 24),
+          _buildSectionLabel('Calendario de reservas'),
+          const SizedBox(height: 12),
+          _buildEmployeeCalendar(),
+          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  // ─── ADMIN DASHBOARD ─────────────────────────────────────────────────────
+  Widget _buildEmployeeHeader(String firstName) {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Buenos días'
+        : hour < 20
+        ? 'Buenas tardes'
+        : 'Buenas noches';
+    final now = DateTime.now();
+    const days = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
+    const months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    final dayStr =
+        '${days[now.weekday - 1]}, ${now.day} de ${months[now.month - 1]}';
+
+    bool busyNow = false;
+    for (final b in _upcomingBookings) {
+      final start = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+      final end = DateTime.tryParse(b['end_at'] ?? '')?.toLocal();
+      if (start != null &&
+          end != null &&
+          now.isAfter(start) &&
+          now.isBefore(end)) {
+        busyNow = true;
+        break;
+      }
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                dayStr,
+                style: GoogleFonts.dmSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF94A3B8),
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 4),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$greeting, ',
+                      style: GoogleFonts.dmSerifDisplay(
+                        fontSize: 26,
+                        color: const Color(0xFF0D1B2E),
+                      ),
+                    ),
+                    TextSpan(
+                      text: firstName,
+                      style: GoogleFonts.dmSerifDisplay(
+                        fontSize: 26,
+                        color: const Color(0xFF1D6FEB),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: busyNow ? const Color(0xFFFEF3C7) : const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: busyNow
+                  ? const Color(0xFFFDE68A)
+                  : const Color(0xFFBBF7D0),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: busyNow
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFF16A34A),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                busyNow ? 'En cita' : 'Disponible',
+                style: GoogleFonts.dmSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: busyNow
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFF16A34A),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmployeeKpiRow() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 500;
+        final chips = <_EmployeeKpiChip>[
+          _EmployeeKpiChip(
+            icon: Icons.calendar_today_rounded,
+            label: 'Hoy',
+            value: '$_todayBookings',
+            sub: _todayBookings == 1 ? 'cita' : 'citas',
+            color: const Color(0xFF1D6FEB),
+          ),
+          _EmployeeKpiChip(
+            icon: Icons.schedule_outlined,
+            label: 'Próximas',
+            value: '${_nextBookings.length}',
+            sub: 'pendientes',
+            color: const Color(0xFF7C3AED),
+          ),
+          _EmployeeKpiChip(
+            icon: Icons.check_circle_outline_rounded,
+            label: 'Este mes',
+            value: '$_completedThisMonth',
+            sub: 'completadas',
+            color: const Color(0xFF16A34A),
+          ),
+        ];
+
+        if (isWide) {
+          return Row(
+            children: [
+              for (int i = 0; i < chips.length; i++) ...[
+                Expanded(child: chips[i]),
+                if (i < chips.length - 1) const SizedBox(width: 12),
+              ],
+            ],
+          );
+        }
+        return Column(
+          children: [
+            for (int i = 0; i < chips.length; i++) ...[
+              chips[i],
+              if (i < chips.length - 1) const SizedBox(height: 10),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildNextAppointmentCard(Map<String, dynamic> booking) {
+    final start = DateTime.tryParse(booking['start_at'] ?? '')?.toLocal();
+    final end = DateTime.tryParse(booking['end_at'] ?? '')?.toLocal();
+    final clientName = booking['client']?['full_name'] as String? ?? 'Cliente';
+    final serviceName = booking['service']?['name'] as String? ?? 'Servicio';
+    final now = DateTime.now();
+
+    String timeLabel = '';
+    if (start != null) {
+      final diff = start.difference(now).inMinutes;
+      if (diff <= 0) {
+        timeLabel = 'Ahora';
+      } else if (diff < 60) {
+        timeLabel = 'En $diff min';
+      } else {
+        final h = diff ~/ 60;
+        final m = diff % 60;
+        timeLabel = m > 0 ? 'En ${h}h ${m}m' : 'En ${h}h';
+      }
+    }
+
+    final timeStr = start != null
+        ? '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}'
+        : '--:--';
+    final endStr = end != null
+        ? '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}'
+        : '';
+    final initial = clientName.isNotEmpty ? clientName[0].toUpperCase() : '?';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1B2E),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1D6FEB).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: GoogleFonts.dmSerifDisplay(
+                  fontSize: 20,
+                  color: const Color(0xFF1D6FEB),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SIGUIENTE CITA',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.4),
+                    letterSpacing: 0.9,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  clientName,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  serviceName,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                timeStr + (endStr.isNotEmpty ? ' – $endStr' : ''),
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1D6FEB),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D6FEB).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  timeLabel,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF60A5FA),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayTimeline() {
+    if (_upcomingBookings.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Center(
+          child: Column(
+            children: [
+              const Icon(
+                Icons.event_busy_outlined,
+                color: Color(0xFFCBD5E1),
+                size: 28,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Sin reservas para hoy',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: List.generate(_upcomingBookings.length, (i) {
+          final b = _upcomingBookings[i];
+          final start = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+          final end = DateTime.tryParse(b['end_at'] ?? '')?.toLocal();
+          final isActive =
+              start != null &&
+              end != null &&
+              now.isAfter(start) &&
+              now.isBefore(end);
+          final isPast = end != null && now.isAfter(end);
+          final clientName = b['client']?['full_name'] as String? ?? 'Cliente';
+          final serviceName = b['service']?['name'] as String? ?? 'Servicio';
+          final timeStr = start != null
+              ? '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}'
+              : '--:--';
+          final status = b['status'] as String? ?? '';
+          final isLast = i == _upcomingBookings.length - 1;
+
+          final dotColor = isActive
+              ? const Color(0xFF1D6FEB)
+              : isPast
+              ? const Color(0xFFCBD5E1)
+              : const Color(0xFF16A34A);
+
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: isActive ? const Color(0xFFEEF5FF) : Colors.transparent,
+              border: isLast
+                  ? null
+                  : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+              borderRadius: isActive
+                  ? const BorderRadius.only(
+                      topLeft: Radius.circular(14),
+                      topRight: Radius.circular(14),
+                    )
+                  : null,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        timeStr,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isPast
+                              ? const Color(0xFFCBD5E1)
+                              : isActive
+                              ? const Color(0xFF1D6FEB)
+                              : const Color(0xFF0D1B2E),
+                        ),
+                      ),
+                      if (isActive)
+                        Text(
+                          'Ahora',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1D6FEB),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        clientName,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isPast
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF0D1B2E),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        serviceName,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _StatusBadge(status: status),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildEmployeeCalendar() {
+    final monday = _empCalendarMonth.subtract(
+      Duration(days: _empCalendarMonth.weekday - 1),
+    );
+    final now = DateTime.now();
+    final weekDays = List.generate(
+      6,
+      (i) => DateTime(monday.year, monday.month, monday.day + i),
+    );
+    const dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _CalNavButton(
+                icon: Icons.chevron_left,
+                onPressed: () {
+                  final newDate = _empCalendarMonth.subtract(
+                    const Duration(days: 7),
+                  );
+                  final needsReload =
+                      newDate.month != _empCalendarMonth.month ||
+                      newDate.year != _empCalendarMonth.year;
+                  setState(() {
+                    _empCalendarMonth = newDate;
+                    _empSelectedDay = null;
+                    _empSelectedDayBookings = [];
+                  });
+                  if (needsReload) _loadEmployeeCalendarMonth();
+                },
+              ),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.view_week_outlined,
+                    size: 14,
+                    color: Color(0xFF1D6FEB),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    '${monday.day}/${monday.month} — ${weekDays.last.day}/${weekDays.last.month}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF0D1B2E),
+                    ),
+                  ),
+                ],
+              ),
+              _CalNavButton(
+                icon: Icons.chevron_right,
+                onPressed: () {
+                  final newDate = _empCalendarMonth.add(
+                    const Duration(days: 7),
+                  );
+                  final needsReload =
+                      newDate.month != _empCalendarMonth.month ||
+                      newDate.year != _empCalendarMonth.year;
+                  setState(() {
+                    _empCalendarMonth = newDate;
+                    _empSelectedDay = null;
+                    _empSelectedDayBookings = [];
+                  });
+                  if (needsReload) _loadEmployeeCalendarMonth();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: List.generate(6, (i) {
+              final date = weekDays[i];
+              final key =
+                  '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+              final bookings = _empBookingsByDay[key] ?? [];
+              final isToday =
+                  date.year == now.year &&
+                  date.month == now.month &&
+                  date.day == now.day;
+              final isSelected =
+                  _empSelectedDay != null &&
+                  _empSelectedDay!.year == date.year &&
+                  _empSelectedDay!.month == date.month &&
+                  _empSelectedDay!.day == date.day;
+
+              return Expanded(
+                child: GestureDetector(
+                  onTap: bookings.isNotEmpty
+                      ? () => setState(() {
+                          _empSelectedDay = date;
+                          _empSelectedDayBookings = bookings;
+                        })
+                      : null,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF0D1B2E)
+                          : isToday
+                          ? const Color(0xFFEEF5FF)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: isToday && !isSelected
+                          ? Border.all(
+                              color: const Color(0xFF1D6FEB),
+                              width: 1.5,
+                            )
+                          : Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          dayLabels[i],
+                          style: GoogleFonts.dmSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? Colors.white.withValues(alpha: 0.5)
+                                : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${date.day}',
+                          style: GoogleFonts.dmSerifDisplay(
+                            fontSize: 18,
+                            color: isSelected
+                                ? Colors.white
+                                : isToday
+                                ? const Color(0xFF1D6FEB)
+                                : const Color(0xFF0D1B2E),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        if (bookings.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1D6FEB),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${bookings.length}',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        else
+                          const SizedBox(height: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          if (_empSelectedDay != null &&
+              _empSelectedDayBookings.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_month_outlined,
+                  size: 14,
+                  color: Color(0xFF1D6FEB),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  'Reservas el ${_empSelectedDay!.day}/${_empSelectedDay!.month}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF0D1B2E),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ..._empSelectedDayBookings.map((b) {
+              final start = DateTime.tryParse(b['start_at'] ?? '')?.toLocal();
+              final end = DateTime.tryParse(b['end_at'] ?? '')?.toLocal();
+              final clientName =
+                  b['client']?['full_name'] as String? ?? 'Cliente';
+              final serviceName =
+                  b['service']?['name'] as String? ?? 'Servicio';
+              final timeStr = start != null
+                  ? '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}'
+                  : '--:--';
+              final endStr = end != null
+                  ? '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}'
+                  : '';
+              final status = b['status'] as String? ?? '';
+              final initial = clientName.isNotEmpty
+                  ? clientName[0].toUpperCase()
+                  : '?';
+              const avatarColors = [
+                Color(0xFF1D6FEB),
+                Color(0xFF7C3AED),
+                Color(0xFF16A34A),
+                Color(0xFFD97706),
+                Color(0xFFDC2626),
+              ];
+              final avatarColor =
+                  avatarColors[initial.codeUnitAt(0) % avatarColors.length];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: avatarColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Center(
+                        child: Text(
+                          initial,
+                          style: GoogleFonts.dmSerifDisplay(
+                            fontSize: 15,
+                            color: avatarColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            clientName,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF0D1B2E),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            serviceName,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          timeStr + (endStr.isNotEmpty ? ' – $endStr' : ''),
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1D6FEB),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        _StatusBadge(status: status),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildAdminDashboard() {
     final firstName =
@@ -583,7 +1476,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                 icon: Icons.inventory_2_outlined,
                 label: 'Stock crítico',
                 value: '$_criticalStock',
-                delta: _criticalStock > 0 ? 'Requiere atención' : 'Todo en orden',
+                delta: _criticalStock > 0
+                    ? 'Requiere atención'
+                    : 'Todo en orden',
                 deltaUp: _criticalStock == 0,
                 sparkData: const [0.2, 0.4, 0.3, 0.5, 0.6, 0.4, 0.3],
                 accentColor: const Color(0xFFD97706),
@@ -612,8 +1507,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionLabel(
-        'Facturación — ${_filterMonth.year == DateTime.now().year ? _monthName(_filterMonth.month) : '${_monthName(_filterMonth.month)} ${_filterMonth.year}'}',
-      ),
+          'Facturación — ${_filterMonth.year == DateTime.now().year ? _monthName(_filterMonth.month) : '${_monthName(_filterMonth.month)} ${_filterMonth.year}'}',
+        ),
         const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -688,11 +1583,188 @@ class _DashboardScreenState extends State<DashboardScreen>
         _buildSectionLabel('Alertas de stock'),
         const SizedBox(height: 12),
         _buildStockPanel(),
+        const SizedBox(height: 20),
+        _buildSectionLabel('Reseñas'),
+        const SizedBox(height: 12),
+        _buildReviewsSummary(),
       ],
     );
   }
 
-  // ─── BOOKINGS CARD (transaction style) ───────────────────────────────────
+  Widget _buildReviewsSummary() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: _reviewCount == 0
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28),
+              child: Center(
+                child: Text(
+                  'Sin reseñas todavía',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Row(
+                    children: [
+                      Text(
+                        _reviewAvg.toStringAsFixed(1),
+                        style: GoogleFonts.dmSerifDisplay(
+                          fontSize: 32,
+                          color: const Color(0xFF0D1B2E),
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: List.generate(5, (i) {
+                              final filled = i < _reviewAvg.floor();
+                              final half = !filled && i < _reviewAvg;
+                              return Icon(
+                                filled
+                                    ? Icons.star_rounded
+                                    : half
+                                    ? Icons.star_half_rounded
+                                    : Icons.star_outline_rounded,
+                                size: 14,
+                                color: const Color(0xFFFBBF24),
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '$_reviewCount reseña${_reviewCount == 1 ? '' : 's'}',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                ..._recentReviews.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final r = entry.value;
+                  final name =
+                      r['client']?['full_name'] as String? ?? 'Cliente';
+                  final rating = r['rating'] as int;
+                  final comment = r['comment'] as String?;
+                  final initials = _getInitials(name);
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0D1B2E),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  initials,
+                                  style: GoogleFonts.dmSerifDisplay(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFF0D1B2E),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Row(
+                                        children: List.generate(
+                                          5,
+                                          (j) => Icon(
+                                            j < rating
+                                                ? Icons.star_rounded
+                                                : Icons.star_outline_rounded,
+                                            size: 11,
+                                            color: const Color(0xFFFBBF24),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (comment != null &&
+                                      comment.isNotEmpty) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      comment,
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 11,
+                                        color: const Color(0xFF64748B),
+                                        height: 1.4,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (i < _recentReviews.length - 1)
+                        const Divider(
+                          height: 1,
+                          indent: 54,
+                          color: Color(0xFFE2E8F0),
+                        ),
+                    ],
+                  );
+                }),
+              ],
+            ),
+    );
+  }
 
   Widget _buildBookingsCard(
     List<Map<String, dynamic>> bookings, {
@@ -761,16 +1833,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       Color(0xFFD97706),
       Color(0xFFDC2626),
     ];
-    final avatarColor = avatarColors[initial.codeUnitAt(0) % avatarColors.length];
+    final avatarColor =
+        avatarColors[initial.codeUnitAt(0) % avatarColors.length];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
       decoration: BoxDecoration(
         border: isLast
             ? null
-            : const Border(
-                bottom: BorderSide(color: Color(0xFFF1F5F9)),
-              ),
+            : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
       ),
       child: Row(
         children: [
@@ -845,8 +1916,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
-
-  // ─── STOCK PANEL ─────────────────────────────────────────────────────────
 
   Widget _buildStockPanel() {
     return Container(
@@ -932,8 +2001,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               final stock = p['stock'] as int;
               final minStock = p['min_stock'] as int;
               final critical = stock < (minStock / 2);
-              final ratio =
-                  minStock > 0 ? (stock / minStock).clamp(0.0, 1.0) : 0.0;
+              final ratio = minStock > 0
+                  ? (stock / minStock).clamp(0.0, 1.0)
+                  : 0.0;
               final isLast = i == _lowStockProducts.length - 1;
               final barColor = critical
                   ? const Color(0xFFDC2626)
@@ -1018,8 +2088,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
-
-  // ─── NOTIFICATION CARD ────────────────────────────────────────────────────
 
   Widget _buildNotificationCard(Map<String, dynamic> n) {
     final employeeName = n['employee']?['full_name'] as String? ?? 'Empleado';
@@ -1107,8 +2175,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ─── CALENDAR ─────────────────────────────────────────────────────────────
-
   Widget _buildCalendar() {
     final monday = _calendarMonth.subtract(
       Duration(days: _calendarMonth.weekday - 1),
@@ -1142,8 +2208,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               _CalNavButton(
                 icon: Icons.chevron_left,
                 onPressed: () => setState(() {
-                  _calendarMonth =
-                      _calendarMonth.subtract(const Duration(days: 7));
+                  _calendarMonth = _calendarMonth.subtract(
+                    const Duration(days: 7),
+                  );
                   _selectedDay = null;
                   _selectedDayBookings = [];
                 }),
@@ -1183,10 +2250,12 @@ class _DashboardScreenState extends State<DashboardScreen>
               final key =
                   '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
               final bookings = _bookingsByDay[key] ?? [];
-              final isToday = date.year == now.year &&
+              final isToday =
+                  date.year == now.year &&
                   date.month == now.month &&
                   date.day == now.day;
-              final isSelected = _selectedDay != null &&
+              final isSelected =
+                  _selectedDay != null &&
                   _selectedDay!.year == date.year &&
                   _selectedDay!.month == date.month &&
                   _selectedDay!.day == date.day;
@@ -1195,9 +2264,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: GestureDetector(
                   onTap: bookings.isNotEmpty
                       ? () => setState(() {
-                            _selectedDay = date;
-                            _selectedDayBookings = bookings;
-                          })
+                          _selectedDay = date;
+                          _selectedDayBookings = bookings;
+                        })
                       : null,
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -1206,8 +2275,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       color: isSelected
                           ? const Color(0xFF0D1B2E)
                           : isToday
-                              ? const Color(0xFFEEF5FF)
-                              : const Color(0xFFF8FAFC),
+                          ? const Color(0xFFEEF5FF)
+                          : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(10),
                       border: isToday && !isSelected
                           ? Border.all(
@@ -1237,8 +2306,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                             color: isSelected
                                 ? Colors.white
                                 : isToday
-                                    ? const Color(0xFF1D6FEB)
-                                    : const Color(0xFF0D1B2E),
+                                ? const Color(0xFF1D6FEB)
+                                : const Color(0xFF0D1B2E),
                           ),
                         ),
                         const SizedBox(height: 5),
@@ -1384,8 +2453,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }).toList();
   }
 
-  // ─── HELPERS ──────────────────────────────────────────────────────────────
-
   Widget _buildSectionLabel(String label) {
     return Row(
       children: [
@@ -1413,35 +2480,142 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String _monthName(int month) {
     const months = [
-      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
     ];
     return months[month - 1];
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    if (parts.isNotEmpty && parts[0].isNotEmpty)
+      return parts[0][0].toUpperCase();
+    return '?';
   }
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
     final now = DateTime.now();
     const days = [
-      'Lunes', 'Martes', 'Miércoles', 'Jueves',
-      'Viernes', 'Sábado', 'Domingo',
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
     ];
     const months = [
-      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
     ];
     final dayName = days[now.weekday - 1];
     final monthName = months[now.month - 1];
     final greeting = hour < 12
         ? 'Buenos días'
         : hour < 20
-            ? 'Buenas tardes'
-            : 'Buenas noches';
+        ? 'Buenas tardes'
+        : 'Buenas noches';
     return '$dayName, ${now.day} de $monthName de ${now.year}  ·  $greeting';
   }
 }
 
 // ─── WIDGETS AUXILIARES ───────────────────────────────────────────────────────
+
+class _EmployeeKpiChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final String sub;
+  final Color color;
+
+  const _EmployeeKpiChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: GoogleFonts.dmSerifDisplay(
+                    fontSize: 22,
+                    color: const Color(0xFF0D1B2E),
+                    height: 1.1,
+                  ),
+                ),
+                Text(
+                  '$label · $sub',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10,
+                    color: const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _DarkKpiCard extends StatelessWidget {
   final IconData icon;
@@ -1576,10 +2750,7 @@ class _DarkKpiCard extends StatelessWidget {
               height: 54,
               width: double.infinity,
               child: CustomPaint(
-                painter: _SparklinePainter(
-                  color: accentColor,
-                  data: sparkData,
-                ),
+                painter: _SparklinePainter(color: accentColor, data: sparkData),
               ),
             ),
           ),
@@ -1686,10 +2857,7 @@ class _SparklinePainter extends CustomPainter {
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [
-          color.withValues(alpha: 0.35),
-          color.withValues(alpha: 0.0),
-        ],
+        colors: [color.withValues(alpha: 0.35), color.withValues(alpha: 0.0)],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
 
@@ -1698,7 +2866,8 @@ class _SparklinePainter extends CustomPainter {
 
     for (int i = 0; i < data.length; i++) {
       final x = (i / (data.length - 1)) * size.width;
-      final y = size.height - (data[i] * size.height * 0.8) - size.height * 0.05;
+      final y =
+          size.height - (data[i] * size.height * 0.8) - size.height * 0.05;
 
       if (i == 0) {
         linePath.moveTo(x, y);
@@ -1707,7 +2876,9 @@ class _SparklinePainter extends CustomPainter {
       } else {
         final prevX = ((i - 1) / (data.length - 1)) * size.width;
         final prevY =
-            size.height - (data[i - 1] * size.height * 0.8) - size.height * 0.05;
+            size.height -
+            (data[i - 1] * size.height * 0.8) -
+            size.height * 0.05;
         final cpX = (prevX + x) / 2;
         linePath.cubicTo(cpX, prevY, cpX, y, x, y);
         fillPath.cubicTo(cpX, prevY, cpX, y, x, y);
@@ -1760,9 +2931,18 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
   late int _year;
 
   static const _months = [
-    'Enero', 'Febrero', 'Marzo', 'Abril',
-    'Mayo', 'Junio', 'Julio', 'Agosto',
-    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   @override
@@ -1819,9 +2999,9 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
                 itemCount: 12,
                 itemBuilder: (ctx, i) {
                   final month = i + 1;
-                  final isFuture =
-                      _year == now.year && month > now.month;
-                  final isSelected = _year == widget.selected.year &&
+                  final isFuture = _year == now.year && month > now.month;
+                  final isSelected =
+                      _year == widget.selected.year &&
                       month == widget.selected.month;
                   return GestureDetector(
                     onTap: isFuture
@@ -1852,8 +3032,8 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
                               color: isSelected
                                   ? Colors.white
                                   : isFuture
-                                      ? const Color(0xFFCBD5E1)
-                                      : const Color(0xFF0D1B2E),
+                                  ? const Color(0xFFCBD5E1)
+                                  : const Color(0xFF0D1B2E),
                             ),
                           ),
                         ),

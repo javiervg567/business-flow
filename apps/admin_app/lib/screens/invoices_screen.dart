@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -377,18 +378,24 @@ class _InvoicesScreenState extends State<InvoicesScreen>
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Facturas',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  style: GoogleFonts.dmSerifDisplay(
+                    fontSize: 26,
+                    color: const Color(0xFF0D1B2E),
+                  ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'Gestiona facturas de venta y compra',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
               ],
             ),
@@ -469,7 +476,45 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   }
 
   Widget _buildSalesList() {
-    if (_loadingSales) return const Center(child: CircularProgressIndicator());
+    if (_loadingSales) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1B2E),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D6FEB).withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(13),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Cargando facturas…',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Column(
       children: [
         Padding(
@@ -526,7 +571,43 @@ class _InvoicesScreenState extends State<InvoicesScreen>
 
   Widget _buildPurchasesList() {
     if (_loadingPurchases) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1B2E),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D6FEB).withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(13),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Cargando facturas…',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      );
     }
     return Column(
       children: [
@@ -724,8 +805,7 @@ class _InvoicesScreenState extends State<InvoicesScreen>
           .eq('purchase_invoice_id', invoice['id'])
           .order('created_at');
       final lines = List<Map<String, dynamic>>.from(linesData);
-      final supplier =
-          invoice['supplier_name'] as String? ?? 'Proveedor';
+      final supplier = invoice['supplier_name'] as String? ?? 'Proveedor';
       final number = invoice['number'] as String? ?? '';
       final date =
           DateTime.tryParse(invoice['issued_at'] as String? ?? '') ??
@@ -805,8 +885,6 @@ class _InvoicesScreenState extends State<InvoicesScreen>
   }
 }
 
-// ── PDF HELPERS ───────────────────────────────────────────
-
 pw.Widget _buildSalePdfPage({
   required String number,
   required DateTime date,
@@ -818,14 +896,14 @@ pw.Widget _buildSalePdfPage({
   required double total,
   required String type,
 }) {
-  final dateStr = '${date.day.toString().padLeft(2, '0')}/'
+  final dateStr =
+      '${date.day.toString().padLeft(2, '0')}/'
       '${date.month.toString().padLeft(2, '0')}/'
       '${date.year}';
 
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      // Header
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -885,7 +963,6 @@ pw.Widget _buildSalePdfPage({
       pw.SizedBox(height: 16),
       pw.Divider(color: PdfColors.blue200, thickness: 1.5),
       pw.SizedBox(height: 16),
-      // Recipient
       pw.Text(
         recipientLabel,
         style: pw.TextStyle(
@@ -901,7 +978,6 @@ pw.Widget _buildSalePdfPage({
         style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
       ),
       pw.SizedBox(height: 20),
-      // Lines header
       pw.Text(
         'CONCEPTOS',
         style: pw.TextStyle(
@@ -951,7 +1027,6 @@ pw.Widget _buildSalePdfPage({
         ],
       ),
       pw.SizedBox(height: 20),
-      // Totals aligned right
       pw.Align(
         alignment: pw.Alignment.centerRight,
         child: pw.SizedBox(
@@ -1005,8 +1080,6 @@ pw.Widget _pdfTotalRow(String label, double value, {bool bold = false}) {
     ],
   );
 }
-
-// ── FILTRO FECHAS ─────────────────────────────────────────
 
 class _DateRangeButton extends StatelessWidget {
   final DateTimeRange? dateRange;
@@ -1077,8 +1150,6 @@ class _DateRangeButton extends StatelessWidget {
   }
 }
 
-// ── TARJETA VENTA ─────────────────────────────────────────
-
 class _SaleInvoiceCard extends StatelessWidget {
   final Map<String, dynamic> invoice;
   final VoidCallback onTap;
@@ -1134,25 +1205,26 @@ class _SaleInvoiceCard extends StatelessWidget {
                   children: [
                     Text(
                       invoice['number'] ?? '',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                      style: GoogleFonts.dmSans(
+                        fontWeight: FontWeight.w700,
                         fontSize: 14,
+                        color: const Color(0xFF0D1B2E),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       clientName,
-                      style: const TextStyle(
+                      style: GoogleFonts.dmSans(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
+                        color: const Color(0xFF64748B),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${date.day}/${date.month}/${date.year}',
-                      style: const TextStyle(
+                      style: GoogleFonts.dmSans(
                         fontSize: 12,
-                        color: Color(0xFF94A3B8),
+                        color: const Color(0xFF94A3B8),
                       ),
                     ),
                   ],
@@ -1163,9 +1235,9 @@ class _SaleInvoiceCard extends StatelessWidget {
                 children: [
                   Text(
                     '${total.toStringAsFixed(2)} €',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                    style: GoogleFonts.dmSerifDisplay(
+                      fontSize: 17,
+                      color: const Color(0xFF0D1B2E),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1202,8 +1274,6 @@ class _SaleInvoiceCard extends StatelessWidget {
     );
   }
 }
-
-// ── TARJETA COMPRA ────────────────────────────────────────
 
 class _PurchaseInvoiceCard extends StatelessWidget {
   final Map<String, dynamic> invoice;
@@ -1259,25 +1329,26 @@ class _PurchaseInvoiceCard extends StatelessWidget {
                   children: [
                     Text(
                       invoice['number'] ?? '',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                      style: GoogleFonts.dmSans(
+                        fontWeight: FontWeight.w700,
                         fontSize: 14,
+                        color: const Color(0xFF0D1B2E),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       supplier,
-                      style: const TextStyle(
+                      style: GoogleFonts.dmSans(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
+                        color: const Color(0xFF64748B),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${date.day}/${date.month}/${date.year}',
-                      style: const TextStyle(
+                      style: GoogleFonts.dmSans(
                         fontSize: 12,
-                        color: Color(0xFF94A3B8),
+                        color: const Color(0xFF94A3B8),
                       ),
                     ),
                   ],
@@ -1288,9 +1359,9 @@ class _PurchaseInvoiceCard extends StatelessWidget {
                 children: [
                   Text(
                     '${total.toStringAsFixed(2)} €',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                    style: GoogleFonts.dmSerifDisplay(
+                      fontSize: 17,
+                      color: const Color(0xFF0D1B2E),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1338,8 +1409,6 @@ class _PurchaseInvoiceCard extends StatelessWidget {
   }
 }
 
-// ── BADGE DE ESTADO ───────────────────────────────────────
-
 class _StatusBadge extends StatelessWidget {
   final String status;
   const _StatusBadge({required this.status});
@@ -1372,7 +1441,7 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         config.label,
-        style: TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: config.color,

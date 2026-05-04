@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'finalize_booking_dialog.dart';
 
@@ -646,7 +647,45 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1B2E),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D6FEB).withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(13),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Cargando reservas…',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final pendingCount = _bookings
         .where((b) => b['status'] == 'pending')
@@ -676,9 +715,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   const SizedBox(width: 10),
                   Text(
                     '$pendingCount reservas pendientes de confirmación.',
-                    style: const TextStyle(
+                    style: GoogleFonts.dmSans(
                       fontSize: 13,
-                      color: Color(0xFF92400E),
+                      color: const Color(0xFF92400E),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -1251,9 +1291,9 @@ class _BookingStatusBadge extends StatelessWidget {
       ),
       child: Text(
         style.$3,
-        style: TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 11,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
           color: style.$2,
         ),
       ),
@@ -1272,11 +1312,11 @@ class _TableHeader extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(paddingLeft, 10, 0, 10),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF64748B),
-          letterSpacing: 0.5,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF374151),
+          letterSpacing: 0.7,
         ),
       ),
     );

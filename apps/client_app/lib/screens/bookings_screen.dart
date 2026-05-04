@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 
 class ClientBookingsScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
   bool _loading = true;
   List<Map<String, dynamic>> _upcoming = [];
   List<Map<String, dynamic>> _past = [];
+  Map<String, int> _reviewRatings = {};
 
   @override
   void initState() {
@@ -63,36 +65,227 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
         _past = (results[1] as List).cast<Map<String, dynamic>>();
         _loading = false;
       });
+
+      final pastIds = _past.map((b) => b['id'] as String).toList();
+      await _loadReviews(pastIds);
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
   }
 
+  Future<void> _loadReviews(List<String> bookingIds) async {
+    if (bookingIds.isEmpty) return;
+    try {
+      final data = await SupabaseService.client
+          .from('reviews')
+          .select('booking_id, rating')
+          .inFilter('booking_id', bookingIds);
+      if (!mounted) return;
+      final map = <String, int>{};
+      for (final r in (data as List)) {
+        map[r['booking_id'] as String] = r['rating'] as int;
+      }
+      setState(() => _reviewRatings = map);
+    } catch (_) {
+      // la tabla de reseñas puede no estar migrada aún
+    }
+  }
+
+  Future<void> _rateBooking(String bookingId) async {
+    int selectedRating = 0;
+    final commentCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Valorar cita',
+            style: GoogleFonts.dmSerifDisplay(
+              fontSize: 20,
+              color: const Color(0xFF0D1B2E),
+            ),
+          ),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '¿Cómo fue tu experiencia?',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (i) {
+                    return GestureDetector(
+                      onTap: () => setDlg(() => selectedRating = i + 1),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          i < selectedRating ? Icons.star : Icons.star_border,
+                          size: 36,
+                          color: const Color(0xFFF59E0B),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: commentCtrl,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    color: const Color(0xFF0D1B2E),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Añade un comentario (opcional)',
+                    hintStyle: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF16A34A),
+                        width: 1.5,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                    isDense: true,
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                commentCtrl.dispose();
+                Navigator.pop(ctx);
+              },
+              child: Text(
+                'Cancelar',
+                style: GoogleFonts.dmSans(color: const Color(0xFF64748B)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: selectedRating == 0
+                  ? null
+                  : () async {
+                      final comment = commentCtrl.text.trim();
+                      try {
+                        await SupabaseService.client.from('reviews').insert({
+                          'booking_id': bookingId,
+                          'client_id': widget.profile['id'],
+                          'business_id': widget.profile['business_id'],
+                          'rating': selectedRating,
+                          if (comment.isNotEmpty) 'comment': comment,
+                        });
+                        if (!ctx.mounted) return;
+                        commentCtrl.dispose();
+                        Navigator.pop(ctx);
+                        final pastIds =
+                            _past.map((b) => b['id'] as String).toList();
+                        await _loadReviews(pastIds);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '¡Gracias por tu valoración!',
+                              style: GoogleFonts.dmSans(),
+                            ),
+                            backgroundColor: const Color(0xFF16A34A),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!ctx.mounted) return;
+                        commentCtrl.dispose();
+                        Navigator.pop(ctx);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Error al enviar valoración',
+                              style: GoogleFonts.dmSans(),
+                            ),
+                            backgroundColor: const Color(0xFFDC2626),
+                          ),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Enviar',
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _cancelBooking(String bookingId) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
           'Cancelar cita',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          style: GoogleFonts.dmSerifDisplay(
+            fontSize: 20,
+            color: const Color(0xFF0D1B2E),
+          ),
         ),
-        content: const Text('¿Seguro que quieres cancelar esta cita?'),
+        content: Text(
+          '¿Seguro que quieres cancelar esta cita?',
+          style: GoogleFonts.dmSans(fontSize: 14, color: const Color(0xFF64748B)),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No', style: TextStyle(color: Color(0xFF64748B))),
+            child: Text(
+              'No',
+              style: GoogleFonts.dmSans(color: const Color(0xFF64748B)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
+              elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text('Sí, cancelar'),
+            child: Text(
+              'Sí, cancelar',
+              style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -106,17 +299,17 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
       _loadBookings();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cita cancelada'),
-          backgroundColor: Color(0xFF64748B),
+        SnackBar(
+          content: Text('Cita cancelada', style: GoogleFonts.dmSans()),
+          backgroundColor: const Color(0xFF64748B),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error al cancelar'),
-          backgroundColor: Color(0xFFDC2626),
+        SnackBar(
+          content: Text('Error al cancelar', style: GoogleFonts.dmSans()),
+          backgroundColor: const Color(0xFFDC2626),
         ),
       );
     }
@@ -147,9 +340,9 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error al cargar servicios'),
-          backgroundColor: Color(0xFFDC2626),
+        SnackBar(
+          content: Text('Error al cargar servicios', style: GoogleFonts.dmSans()),
+          backgroundColor: const Color(0xFFDC2626),
         ),
       );
       return;
@@ -181,9 +374,13 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
               : null;
 
           return AlertDialog(
-            title: const Text(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
               'Nueva cita',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: GoogleFonts.dmSerifDisplay(
+                fontSize: 20,
+                color: const Color(0xFF0D1B2E),
+              ),
             ),
             content: SizedBox(
               width: 400,
@@ -192,7 +389,7 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _label('Servicio *'),
+                    _DlgLabel('Servicio *'),
                     const SizedBox(height: 6),
                     _dropdown<Map<String, dynamic>>(
                       hint: 'Seleccionar servicio',
@@ -203,7 +400,7 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                       onChanged: (v) => setDlg(() => selService = v),
                     ),
                     const SizedBox(height: 14),
-                    _label('Empleado (opcional)'),
+                    _DlgLabel('Empleado (opcional)'),
                     const SizedBox(height: 6),
                     _nullableDropdown(
                       hint: 'Sin preferencia',
@@ -219,7 +416,7 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _label('Fecha *'),
+                              _DlgLabel('Fecha *'),
                               const SizedBox(height: 6),
                               _pickerBtn(
                                 label: dateStr ?? 'Seleccionar',
@@ -246,7 +443,7 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _label('Hora *'),
+                              _DlgLabel('Hora *'),
                               const SizedBox(height: 6),
                               _pickerBtn(
                                 label: timeStr ?? 'Seleccionar',
@@ -271,9 +468,9 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text(
+                child: Text(
                   'Cancelar',
-                  style: TextStyle(color: Color(0xFF64748B)),
+                  style: GoogleFonts.dmSans(color: const Color(0xFF64748B)),
                 ),
               ),
               ElevatedButton(
@@ -309,17 +506,23 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                           _loadBookings();
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Cita solicitada correctamente'),
-                              backgroundColor: Color(0xFF16A34A),
+                            SnackBar(
+                              content: Text(
+                                'Cita solicitada correctamente',
+                                style: GoogleFonts.dmSans(),
+                              ),
+                              backgroundColor: const Color(0xFF16A34A),
                             ),
                           );
                         } catch (e) {
                           if (!ctx.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Error al crear la cita'),
-                              backgroundColor: Color(0xFFDC2626),
+                            SnackBar(
+                              content: Text(
+                                'Error al crear la cita',
+                                style: GoogleFonts.dmSans(),
+                              ),
+                              backgroundColor: const Color(0xFFDC2626),
                             ),
                           );
                         }
@@ -327,11 +530,15 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF16A34A),
                   foregroundColor: Colors.white,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Solicitar cita'),
+                child: Text(
+                  'Solicitar cita',
+                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           );
@@ -345,52 +552,74 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
     return SafeArea(
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Row(
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(color: Color(0xFF0D1B2E)),
+            child: Stack(
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Positioned.fill(child: CustomPaint(painter: _BookingsGridPainter())),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  child: Row(
                     children: [
-                      Text(
-                        'Mis citas',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Mis citas',
+                              style: GoogleFonts.dmSerifDisplay(
+                                fontSize: 26,
+                                color: Colors.white,
+                                height: 1.1,
+                              ),
+                            ),
+                            Text(
+                              'Gestiona tus reservas',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        'Gestiona tus reservas',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
+                      ElevatedButton.icon(
+                        onPressed: _showNewBookingDialog,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: Text(
+                          'Nueva cita',
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: _showNewBookingDialog,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Nueva cita'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF16A34A),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFF4F6FA),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFE2E8F2)),
               ),
@@ -404,6 +633,11 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
                 labelColor: Colors.white,
                 unselectedLabelColor: const Color(0xFF64748B),
                 dividerColor: Colors.transparent,
+                labelStyle: GoogleFonts.dmSans(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                unselectedLabelStyle: GoogleFonts.dmSans(fontSize: 13),
                 tabs: const [
                   Tab(text: 'Próximas'),
                   Tab(text: 'Historial'),
@@ -411,9 +645,12 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
               ),
             ),
           ),
+
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF16A34A)),
+                  )
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -436,15 +673,27 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              upcoming ? Icons.calendar_today_outlined : Icons.history,
-              size: 48,
-              color: const Color(0xFFCBD5E1),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F6FA),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                upcoming ? Icons.calendar_today_outlined : Icons.history,
+                size: 26,
+                color: const Color(0xFFCBD5E1),
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               upcoming ? 'No tienes citas próximas' : 'Sin historial',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+              style: GoogleFonts.dmSans(
+                color: const Color(0xFF94A3B8),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -452,33 +701,42 @@ class _ClientBookingsScreenState extends State<ClientBookingsScreen>
     }
 
     return RefreshIndicator(
+      color: const Color(0xFF16A34A),
       onRefresh: _loadBookings,
       child: ListView.builder(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         itemCount: bookings.length,
-        itemBuilder: (ctx, i) => _BookingCard(
-          booking: bookings[i],
-          upcoming: upcoming,
-          onCancel: upcoming
-              ? () => _cancelBooking(bookings[i]['id'] as String)
-              : null,
-        ),
+        itemBuilder: (ctx, i) {
+          final id = bookings[i]['id'] as String;
+          final status = bookings[i]['status'] as String? ?? '';
+          return _BookingCard(
+            booking: bookings[i],
+            upcoming: upcoming,
+            onCancel: upcoming ? () => _cancelBooking(id) : null,
+            existingRating: _reviewRatings[id],
+            onRate: (!upcoming && status == 'completed' && !_reviewRatings.containsKey(id))
+                ? () => _rateBooking(id)
+                : null,
+          );
+        },
       ),
     );
   }
 }
 
-// ── TARJETA DE CITA ───────────────────────────────────────
-
 class _BookingCard extends StatelessWidget {
   final Map<String, dynamic> booking;
   final bool upcoming;
   final VoidCallback? onCancel;
+  final int? existingRating;
+  final VoidCallback? onRate;
 
   const _BookingCard({
     required this.booking,
     required this.upcoming,
     this.onCancel,
+    this.existingRating,
+    this.onRate,
   });
 
   @override
@@ -528,8 +786,15 @@ class _BookingCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F2)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D1B2E).withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,17 +802,14 @@ class _BookingCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: statusConfig.bg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   statusConfig.label,
-                  style: TextStyle(
+                  style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: statusConfig.color,
@@ -557,14 +819,21 @@ class _BookingCard extends StatelessWidget {
               const Spacer(),
               Text(
                 dateStr,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: GoogleFonts.dmSans(
+                  fontSize: 12,
+                  color: const Color(0xFF64748B),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Text(
             service?['name'] ?? 'Servicio',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            style: GoogleFonts.dmSerifDisplay(
+              fontSize: 18,
+              color: const Color(0xFF0D1B2E),
+              height: 1.1,
+            ),
           ),
           const SizedBox(height: 6),
           Row(
@@ -573,21 +842,20 @@ class _BookingCard extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 timeStr,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
               ),
               if (employee != null) ...[
                 const SizedBox(width: 12),
-                const Icon(
-                  Icons.person_outline,
-                  size: 14,
-                  color: Color(0xFF94A3B8),
-                ),
+                const Icon(Icons.person_outline, size: 14, color: Color(0xFF94A3B8)),
                 const SizedBox(width: 4),
                 Text(
                   employee['full_name'] ?? '',
-                  style: const TextStyle(
+                  style: GoogleFonts.dmSans(
                     fontSize: 13,
-                    color: Color(0xFF64748B),
+                    color: const Color(0xFF64748B),
                   ),
                 ),
               ],
@@ -595,12 +863,19 @@ class _BookingCard extends StatelessWidget {
           ),
           if (service?['price'] != null) ...[
             const SizedBox(height: 6),
-            Text(
-              '${(service['price'] as num).toStringAsFixed(2)} €',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF16A34A),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${(service['price'] as num).toStringAsFixed(2)} €',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF16A34A),
+                ),
               ),
             ),
           ],
@@ -610,20 +885,20 @@ class _BookingCard extends StatelessWidget {
             const SizedBox(height: 8),
             GestureDetector(
               onTap: onCancel,
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.cancel_outlined,
-                    size: 16,
+                    size: 15,
                     color: Color(0xFFDC2626),
                   ),
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   Text(
                     'Cancelar cita',
-                    style: TextStyle(
+                    style: GoogleFonts.dmSans(
                       fontSize: 12,
-                      color: Color(0xFFDC2626),
+                      color: const Color(0xFFDC2626),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -631,16 +906,78 @@ class _BookingCard extends StatelessWidget {
               ),
             ),
           ],
+
+          if (!upcoming && status == 'completed') ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const SizedBox(height: 8),
+            if (existingRating != null)
+              Row(
+                children: [
+                  ...List.generate(
+                    5,
+                    (i) => Icon(
+                      i < existingRating! ? Icons.star : Icons.star_border,
+                      size: 16,
+                      color: const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Tu valoración',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              )
+            else if (onRate != null)
+              GestureDetector(
+                onTap: onRate,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_border,
+                      size: 15,
+                      color: Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Valorar esta cita',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: const Color(0xFFF59E0B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ── HELPERS ───────────────────────────────────────────────
+class _DlgLabel extends StatelessWidget {
+  final String text;
+  const _DlgLabel(this.text);
 
-Widget _label(String text) =>
-    Text(text, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)));
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.dmSans(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        color: const Color(0xFF374151),
+      ),
+    );
+  }
+}
 
 Widget _dropdown<T>({
   required String hint,
@@ -661,10 +998,10 @@ Widget _dropdown<T>({
         value: value,
         hint: Text(
           hint,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+          style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF94A3B8)),
         ),
         isExpanded: true,
-        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+        style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF0D1B2E)),
         items: items
             .map(
               (item) => DropdownMenuItem<T>(
@@ -698,16 +1035,19 @@ Widget _nullableDropdown({
         value: value,
         hint: Text(
           hint,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+          style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF94A3B8)),
         ),
         isExpanded: true,
-        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+        style: GoogleFonts.dmSans(fontSize: 13, color: const Color(0xFF0D1B2E)),
         items: [
-          const DropdownMenuItem<Map<String, dynamic>?>(
+          DropdownMenuItem<Map<String, dynamic>?>(
             value: null,
             child: Text(
               'Sin preferencia',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+              style: GoogleFonts.dmSans(
+                color: const Color(0xFF94A3B8),
+                fontSize: 13,
+              ),
             ),
           ),
           ...items.map(
@@ -730,14 +1070,46 @@ Widget _pickerBtn({
 }) {
   return OutlinedButton.icon(
     onPressed: onTap,
-    icon: Icon(icon, size: 15),
-    label: Text(label, style: const TextStyle(fontSize: 12)),
+    icon: Icon(icon, size: 14),
+    label: Text(label),
     style: OutlinedButton.styleFrom(
       foregroundColor: const Color(0xFF16A34A),
+      textStyle: GoogleFonts.dmSans(fontSize: 12),
       side: const BorderSide(color: Color(0xFFE2E8F2)),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       alignment: Alignment.centerLeft,
     ),
   );
+}
+
+class _BookingsGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1A2F4A).withValues(alpha: 0.45)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+
+    const spacing = 48.0;
+    for (double x = 0; x < size.width + spacing; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height + spacing; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFF16A34A).withValues(alpha: 0.07)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.85, size.height * 0.30),
+      60,
+      glowPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

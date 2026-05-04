@@ -116,7 +116,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Título
                   Row(
                     children: [
                       const Icon(
@@ -136,7 +135,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Nombre
                   _field(
                     'Nombre *',
                     _nameCtrl,
@@ -146,7 +144,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 12),
 
-                  // SKU y Categoría
                   Row(
                     children: [
                       Expanded(child: _field('SKU', _skuCtrl, 'Ej: TIN-0042')),
@@ -158,7 +155,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Precio venta y precio compra
                   Row(
                     children: [
                       Expanded(
@@ -182,11 +178,9 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Indicador de margen
                   _buildMarginIndicator(),
                   const SizedBox(height: 12),
 
-                  // Stock y Stock mínimo
                   Row(
                     children: [
                       Expanded(
@@ -210,7 +204,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Toggle for_sale
                   Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
@@ -243,7 +236,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Acciones
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [

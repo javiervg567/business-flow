@@ -266,7 +266,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Título
               Row(
                 children: [
                   Container(
@@ -307,7 +306,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
               ),
               const SizedBox(height: 20),
 
-              // IVA
               SizedBox(
                 width: 100,
                 child: TextFormField(
@@ -319,7 +317,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
               ),
               const SizedBox(height: 16),
 
-              // Líneas
               const Text(
                 'Líneas',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
@@ -334,7 +331,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
                 ),
               ),
 
-              // Botones de añadir
               Row(
                 children: [
                   TextButton.icon(
@@ -352,7 +348,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
 
               const Divider(height: 24),
 
-              // Totales
               InvoiceTotalRow(label: 'Subtotal', value: _subtotal),
               InvoiceTotalRow(
                 label: 'IVA (${_taxRate.toStringAsFixed(0)}%)',
@@ -362,7 +357,6 @@ class _FinalizeBookingDialogState extends State<FinalizeBookingDialog> {
               InvoiceTotalRow(label: 'Total', value: _total, bold: true),
               const SizedBox(height: 20),
 
-              // Botones acción
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [

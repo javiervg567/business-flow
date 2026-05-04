@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   core:
     path: ../../packages/core
+  google_fonts: ^6.2.1
   ui_kit:
     path: ../../packages/ui_kit
   flutter_localizations:

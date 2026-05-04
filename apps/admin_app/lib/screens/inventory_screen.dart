@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'product_form_dialog.dart';
 import 'package:flutter/foundation.dart';
@@ -499,7 +500,45 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1B2E),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D6FEB).withValues(alpha: 0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(13),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1D6FEB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Cargando inventario…',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final criticalCount = _products
         .where((p) => (p['stock'] as int) < (p['min_stock'] as int))
@@ -529,9 +568,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   const SizedBox(width: 10),
                   Text(
                     '$criticalCount productos con stock crítico.',
-                    style: const TextStyle(
+                    style: GoogleFonts.dmSans(
                       fontSize: 13,
-                      color: Color(0xFF92400E),
+                      color: const Color(0xFF92400E),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -1178,11 +1218,11 @@ class _TableHeader extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(paddingLeft, 10, 0, 10),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF64748B),
-          letterSpacing: 0.5,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF374151),
+          letterSpacing: 0.7,
         ),
       ),
     );
@@ -1241,9 +1281,9 @@ class _StockBadge extends StatelessWidget {
       ),
       child: Text(
         status,
-        style: TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 11,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
           color: style.$2,
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:core/core.dart';
 import 'login_screen.dart';
 import 'dashboard_screen.dart';
@@ -6,7 +7,10 @@ import 'bookings_screen.dart';
 import 'inventory_screen.dart';
 import 'invoices_screen.dart';
 import 'services_screen.dart';
+import 'employees_screen.dart';
+import 'reviews_screen.dart';
 import 'profile_screen.dart';
+import 'logo_mark.dart';
 
 class MainLayout extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -35,6 +39,8 @@ class _MainLayoutState extends State<MainLayout> {
         _NavItem(icon: Icons.inventory_2, label: 'Inventario'),
         _NavItem(icon: Icons.design_services_outlined, label: 'Servicios'),
         _NavItem(icon: Icons.receipt_long, label: 'Facturas'),
+        _NavItem(icon: Icons.badge_outlined, label: 'Empleados'),
+        _NavItem(icon: Icons.star_outline_rounded, label: 'Reseñas'),
         _NavItem(icon: Icons.person_outline, label: 'Perfil'),
       ];
       _screens = [
@@ -43,6 +49,8 @@ class _MainLayoutState extends State<MainLayout> {
         const InventoryScreen(),
         ServicesScreen(profile: widget.profile),
         InvoicesScreen(profile: widget.profile),
+        EmployeesScreen(profile: widget.profile),
+        ReviewsScreen(profile: widget.profile),
         ProfileScreen(profile: widget.profile),
       ];
     } else {
@@ -96,9 +104,11 @@ class _MainLayoutState extends State<MainLayout> {
             ),
             child: Column(
               children: [
-                // Logo
                 Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 15,
+                  ),
                   decoration: const BoxDecoration(
                     border: Border(
                       bottom: BorderSide(color: Color(0xFFE2E8F2)),
@@ -106,35 +116,23 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1D6FEB),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.grid_view_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
+                      const BarsLogoMark(size: 34, borderRadius: 9),
                       const SizedBox(width: 10),
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Business Flow',
-                            style: TextStyle(
+                            style: GoogleFonts.dmSerifDisplay(
                               fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF0D1B2E),
                             ),
                           ),
                           Text(
                             'v1.0 · Beta',
-                            style: TextStyle(
+                            style: GoogleFonts.dmSans(
                               fontSize: 10,
-                              color: Color(0xFF64748B),
+                              color: const Color(0xFF94A3B8),
                             ),
                           ),
                         ],
@@ -143,7 +141,6 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                 ),
 
-                // Badge empleado
                 if (!_isAdmin)
                   Container(
                     margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -156,19 +153,19 @@ class _MainLayoutState extends State<MainLayout> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: const Color(0xFFBBF7D0)),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.badge_outlined,
                           size: 14,
                           color: Color(0xFF16A34A),
                         ),
-                        SizedBox(width: 6),
+                        const SizedBox(width: 6),
                         Text(
                           'Modo empleado',
-                          style: TextStyle(
+                          style: GoogleFonts.dmSans(
                             fontSize: 11,
-                            color: Color(0xFF16A34A),
+                            color: const Color(0xFF16A34A),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -193,7 +190,6 @@ class _MainLayoutState extends State<MainLayout> {
 
                 const Spacer(),
 
-                // Usuario
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: const BoxDecoration(
@@ -206,15 +202,20 @@ class _MainLayoutState extends State<MainLayout> {
                       padding: const EdgeInsets.all(8),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: const Color(0xFF1D6FEB),
-                            child: Text(
-                              _getInitials(widget.profile['full_name'] ?? ''),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D1B2E),
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Center(
+                              child: Text(
+                                _getInitials(widget.profile['full_name'] ?? ''),
+                                style: GoogleFonts.dmSerifDisplay(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ),
@@ -225,17 +226,18 @@ class _MainLayoutState extends State<MainLayout> {
                               children: [
                                 Text(
                                   widget.profile['full_name'] ?? '',
-                                  style: const TextStyle(
+                                  style: GoogleFonts.dmSans(
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF0D1B2E),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   _isAdmin ? 'Administrador' : 'Empleado',
-                                  style: const TextStyle(
+                                  style: GoogleFonts.dmSans(
                                     fontSize: 11,
-                                    color: Color(0xFF64748B),
+                                    color: const Color(0xFF94A3B8),
                                   ),
                                 ),
                               ],
@@ -244,7 +246,7 @@ class _MainLayoutState extends State<MainLayout> {
                           const Icon(
                             Icons.chevron_right,
                             size: 16,
-                            color: Color(0xFF64748B),
+                            color: Color(0xFF94A3B8),
                           ),
                         ],
                       ),
@@ -255,13 +257,12 @@ class _MainLayoutState extends State<MainLayout> {
             ),
           ),
 
-          // Contenido principal
           Expanded(
             child: Column(
               children: [
                 Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  height: 54,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     border: Border(
@@ -270,11 +271,22 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                   child: Row(
                     children: [
+                      Container(
+                        width: 3,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D6FEB),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
                       Text(
-                        _navItems[_currentIndex].label,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                        _navItems[_currentIndex].label.toUpperCase(),
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF374151),
+                          letterSpacing: 0.9,
                         ),
                       ),
                     ],
@@ -295,29 +307,106 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // ==================== MÓVIL ====================
+
+  static const _adminPrimaryIndices = [0, 1, 4, 7];
+  static const _adminMoreIndices = [2, 3, 5, 6];
+
+  int get _mobileNavSelectedIndex {
+    final pos = _adminPrimaryIndices.indexOf(_currentIndex);
+    return pos >= 0 ? pos : 4;
+  }
+
   Widget _buildMobileLayout() {
+    final title = _navItems[_currentIndex].label;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_navItems[_currentIndex].label),
-        backgroundColor: const Color(0xFF1D6FEB),
+        title: Text(
+          title,
+          style: GoogleFonts.dmSerifDisplay(fontSize: 20, color: Colors.white),
+        ),
+        backgroundColor: const Color(0xFF0D1B2E),
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _handleLogout),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, size: 20),
+            onPressed: _handleLogout,
+          ),
         ],
       ),
       body: _screens[_currentIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: _onItemTapped,
-        indicatorColor: const Color(0xFF1D6FEB).withValues(alpha: 0.1),
-        destinations: _navItems
-            .map(
-              (item) => NavigationDestination(
-                icon: Icon(item.icon),
-                label: item.label,
-              ),
-            )
-            .toList(),
+      bottomNavigationBar: _isAdmin
+          ? _buildAdminMobileNav()
+          : NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: _onItemTapped,
+              backgroundColor: Colors.white,
+              indicatorColor: const Color(0xFF1D6FEB).withValues(alpha: 0.12),
+              surfaceTintColor: Colors.transparent,
+              destinations: _navItems
+                  .map(
+                    (item) => NavigationDestination(
+                      icon: Icon(item.icon),
+                      label: item.label,
+                    ),
+                  )
+                  .toList(),
+            ),
+    );
+  }
+
+  Widget _buildAdminMobileNav() {
+    return NavigationBar(
+      selectedIndex: _mobileNavSelectedIndex,
+      onDestinationSelected: (i) {
+        if (i == 4) {
+          _showMoreSheet();
+        } else {
+          _onItemTapped(_adminPrimaryIndices[i]);
+        }
+      },
+      backgroundColor: Colors.white,
+      indicatorColor: const Color(0xFF1D6FEB).withValues(alpha: 0.12),
+      surfaceTintColor: Colors.transparent,
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.grid_view_rounded),
+          label: 'Dashboard',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.calendar_month),
+          label: 'Reservas',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.receipt_long),
+          label: 'Facturas',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          label: 'Perfil',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.more_horiz_rounded),
+          label: 'Más',
+        ),
+      ],
+    );
+  }
+
+  void _showMoreSheet() {
+    final moreItems = _adminMoreIndices.map((i) => _navItems[i]).toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MoreSheet(
+        items: moreItems,
+        screenIndices: _adminMoreIndices,
+        currentIndex: _currentIndex,
+        onTap: (screenIndex) {
+          Navigator.pop(context);
+          _onItemTapped(screenIndex);
+        },
       ),
     );
   }
@@ -325,7 +414,9 @@ class _MainLayoutState extends State<MainLayout> {
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    if (parts.isNotEmpty) return parts[0][0].toUpperCase();
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0][0].toUpperCase();
+    }
     return '?';
   }
 }
@@ -338,6 +429,99 @@ class _NavItem {
   const _NavItem({required this.icon, required this.label});
 }
 
+class _MoreSheet extends StatelessWidget {
+  final List<_NavItem> items;
+  final List<int> screenIndices;
+  final int currentIndex;
+  final void Function(int screenIndex) onTap;
+
+  const _MoreSheet({
+    required this.items,
+    required this.screenIndices,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D1B2E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Más opciones',
+            style: GoogleFonts.dmSerifDisplay(
+              fontSize: 18,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.2,
+            children: List.generate(items.length, (i) {
+              final selected = screenIndices[i] == currentIndex;
+              return GestureDetector(
+                onTap: () => onTap(screenIndices[i]),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? const Color(0xFF1D6FEB)
+                        : Colors.white.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFF1D6FEB)
+                          : Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(items[i].icon, size: 20, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Text(
+                        items[i].label,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SidebarSection extends StatelessWidget {
   final String title;
   const _SidebarSection({required this.title});
@@ -345,14 +529,14 @@ class _SidebarSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
+        style: GoogleFonts.dmSans(
           fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF64748B),
-          letterSpacing: 0.8,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF94A3B8),
+          letterSpacing: 1.0,
         ),
       ),
     );
@@ -378,9 +562,9 @@ class _SidebarItem extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       child: Material(
         color: selected ? const Color(0xFFEEF5FF) : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -394,16 +578,27 @@ class _SidebarItem extends StatelessWidget {
                       : const Color(0xFF64748B),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-                    color: selected
-                        ? const Color(0xFF1D6FEB)
-                        : const Color(0xFF64748B),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                      color: selected
+                          ? const Color(0xFF1D6FEB)
+                          : const Color(0xFF64748B),
+                    ),
                   ),
                 ),
+                if (selected)
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF1D6FEB),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
               ],
             ),
           ),
